@@ -5,7 +5,8 @@
 exports.handler = async function (context, event, callback) {
   // Twilio sends fields like:
   // event.MessageSid, event.To, event.MessageStatus (queued|sent|delivered|failed|undelivered), event.ErrorCode
-  const gsEndpoint = 'https://script.google.com/macros/s/AKfycby5KBwM6WlUbGg3AcBgMYcZh_yOTZK1agB2nTzlHai9sN11WdLj1FrRGIUV6peW0ZxMmA/exec';
+  // Prefer a GS endpoint set in the Twilio Function environment (context.GS_ENDPOINT).
+  const gsEndpoint = context.GS_ENDPOINT || 'https://script.google.com/macros/s/AKfycby5KBwM6WlUbGg3AcBgMYcZh_yOTZK1agB2nTzlHai9sN11WdLj1FrRGIUV6peW0ZxMmA/exec';
 
   const payload = {
     event_type: 'delivery',
@@ -17,9 +18,12 @@ exports.handler = async function (context, event, callback) {
   };
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (context.X_RB_KEY) headers['X-RB-Key'] = context.X_RB_KEY;
+
     const res = await fetch(gsEndpoint, {
       method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-RB-Key': '1v<X$F[_ro&}.y%qJ3V^>d&z,5Ak^_'}, // must match EXPECTED_KEY
+      headers,
       body: JSON.stringify(payload)
     });
     const txt = await res.text();

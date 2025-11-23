@@ -3,7 +3,8 @@
 // Runtime: Node 18
 
 exports.handler = async function (context, event, callback) {
-  const gsEndpoint = 'https://script.google.com/macros/s/AKfycby5KBwM6WlUbGg3AcBgMYcZh_yOTZK1agB2nTzlHai9sN11WdLj1FrRGIUV6peW0ZxMmA/exec';
+  // Prefer a GS endpoint set in the Twilio Function environment (context.GS_ENDPOINT).
+  const gsEndpoint = context.GS_ENDPOINT || 'https://script.google.com/macros/s/AKfycby5KBwM6WlUbGg3AcBgMYcZh_yOTZK1agB2nTzlHai9sN11WdLj1FrRGIUV6peW0ZxMmA/exec';
 
   try {
     // Raw fields Twilio may send for Link Clicks
@@ -55,9 +56,12 @@ exports.handler = async function (context, event, callback) {
     console.log('Outgoing to GS:', JSON.stringify(payload));
 
     // Send to Google Apps Script (expects JSON)
+    const headers = { 'Content-Type': 'application/json' };
+    if (context.X_RB_KEY) headers['X-RB-Key'] = context.X_RB_KEY;
+
     const res = await fetch(gsEndpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
     });
     const text = await res.text();

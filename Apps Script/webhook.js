@@ -17,7 +17,13 @@ const DEDUP_TTL_SEC = 7200;
 
 // Shared-secret (DISABLED per request)
 const ENFORCE_KEY  = false;
-const EXPECTED_KEY = 'unused-when-enforce-false';
+// Read the expected X-RB-Key from Script Properties so deploy-time config is possible
+let X_RB_KEY = '';
+try {
+  X_RB_KEY = PropertiesService.getScriptProperties().getProperty('X_RB_KEY') || '';
+} catch (_e) {
+  X_RB_KEY = '';
+}
 
 // ========= UTILITIES =========
 const toSnake_ = s => String(s || '').toLowerCase().trim().replace(/\s+/g, '_');
@@ -166,9 +172,27 @@ function updateMasterByTo_(ss, toNorm, updates) {
     if (normPhone_(rows[r][cPhone-1]) === toNorm) { rIdx = r + 2; break; }
   }
   if (rIdx === -1) return;
+  // sent_at / clicked_at: only set if empty (first-write wins) unless caller forces it
+  if (cSent !== -1 && updates.sent_at) {
+    try {
+      const curSent = sh.getRange(rIdx, cSent).getValue();
+      if (!curSent || updates.forceSent) sh.getRange(rIdx, cSent).setValue(updates.sent_at);
+    } catch (e) {
+      // best-effort write if reading fails
+      sh.getRange(rIdx, cSent).setValue(updates.sent_at);
+    }
+  }
 
-  if (updates.sent_at && cSent !== -1) sh.getRange(rIdx, cSent).setValue(updates.sent_at);
-  if (updates.clicked_at && cClick !== -1) sh.getRange(rIdx, cClick).setValue(updates.clicked_at);
+  if (cClick !== -1 && updates.clicked_at) {
+    try {
+      const curClicked = sh.getRange(rIdx, cClick).getValue();
+      if (!curClicked || updates.forceClicked) sh.getRange(rIdx, cClick).setValue(updates.clicked_at);
+    } catch (e) {
+      // best-effort write if reading fails
+      sh.getRange(rIdx, cClick).setValue(updates.clicked_at);
+    }
+  }
+
   if (typeof updates.followup_stage !== 'undefined' && cStage !== -1) {
     const cur = sh.getRange(rIdx, cStage).getValue();
     if (!cur || updates.forceStage) sh.getRange(rIdx, cStage).setValue(updates.followup_stage);
@@ -217,7 +241,12 @@ function doPost(e) {
   if (ENFORCE_KEY) {
     const hdrs = (e && e.headers) || {};
     const key = hdrs['x-rb-key'] || hdrs['X-RB-Key'] || '';
-    if (key !== EXPECTED_KEY) {
+    // If enforcement is enabled but no key is configured in Script Properties, deny (fail-closed).
+    if (!X_RB_KEY) {
+      logPing_(ss, e && e.postData ? e.postData.contents || '' : '', JSON.stringify(hdrs), 'unauthorized_no_config');
+      return ContentService.createTextOutput('ok');
+    }
+    if (key !== X_RB_KEY) {
       logPing_(ss, e && e.postData ? e.postData.contents || '' : '', JSON.stringify(hdrs), 'unauthorized');
       return ContentService.createTextOutput('ok');
     }

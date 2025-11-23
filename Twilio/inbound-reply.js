@@ -9,7 +9,8 @@ exports.handler = async function(context, event, callback) {
 
   // Forward to Google Apps Script as JSON
   try {
-    const gsEndpoint = 'https://script.google.com/macros/s/AKfycby5KBwM6WlUbGg3AcBgMYcZh_yOTZK1agB2nTzlHai9sN11WdLj1FrRGIUV6peW0ZxMmA/exec';
+    // Use `context.GS_ENDPOINT` when set in Twilio Function config; fall back to a best-guess placeholder.
+    const gsEndpoint = context.GS_ENDPOINT || 'https://script.google.com/macros/s/AKfycby5KBwM6WlUbGg3AcBgMYcZh_yOTZK1agB2nTzlHai9sN11WdLj1FrRGIUV6peW0ZxMmA/exec';
     const payload = {
       event_type: 'inbound',
       from: event.From || '',
@@ -17,9 +18,13 @@ exports.handler = async function(context, event, callback) {
       body: event.Body || '',
       message_sid: event.MessageSid || '',
     };
+    const headers = { 'Content-Type': 'application/json' };
+    // add shared-secret header only when configured in the Twilio Function environment
+    if (context.X_RB_KEY) headers['X-RB-Key'] = context.X_RB_KEY;
+
     const res = await fetch(gsEndpoint, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-RB-Key': '1v<X$F[_ro&}.y%qJ3V^>d&z,5Ak^_'}, // must match EXPECTED_KEY
+      headers,
       body: JSON.stringify(payload),
     });
     const txt = await res.text();

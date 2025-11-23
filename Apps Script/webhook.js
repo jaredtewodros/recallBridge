@@ -1,5 +1,4 @@
 /************
- * Best Office Staff — Webhook (Apps Script)
  * - Handles inbound (Queue upsert), delivery callbacks (Master.sent_at),
  *   click events (Master.clicked_at), consent (STOP/START/YES/UNSTOP),
  *   idempotency (CacheService), and lightweight ping logging.
@@ -88,6 +87,125 @@ function getActiveSheetId_() {
 }
 
 function openSS_() { return SpreadsheetApp.openById(getActiveSheetId_()); }
+
+// Kill-switch: if a sheet named `Config` exists and cell B2 is set to OFF (case-insensitive),
+// webhook handlers will no-op and avoid writing to the sheets. This gives operators a quick
+// emergency stop without changing code or deployment.
+function killSwitchIsOff_(ss) {
+  try {
+    const cfg = ss.getSheetByName('Config');
+    if (!cfg) return false;
+    const v = String(cfg.getRange('B2').getValue() || '').toUpperCase().trim();
+    return v === 'OFF' || v === '0' || v === 'FALSE' || v === 'NO';
+  } catch (_e) {
+    return false;
+  }
+}
+
+// Create a Config sheet (if missing) and set B2 to 'ON'. Useful to seed the kill-switch.
+function createConfigSheetAndEnable_(ss) {
+  try {
+    let cfg = ss.getSheetByName('Config');
+    if (!cfg) cfg = ss.insertSheet('Config');
+    cfg.getRange('A1').setValue('Key');
+    cfg.getRange('B1').setValue('Value');
+    cfg.getRange('A2').setValue('WebhookEnabled');
+    cfg.getRange('B2').setValue('ON');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Create a saved filter view named "Today's Replies" on the Queue sheet.
+// It filters `status` to show only recent working statuses and (when using the
+// Advanced Sheets API) sorts by `responded_at` descending. The Advanced API path
+// will create a named Filter View. If the Advanced Service is not enabled, it
+// falls back to creating a normal Filter WITHOUT reordering the sheet (non-destructive).
+function createTodaysRepliesFilterView_() {
+  try {
+    const ss = openSS_();
+    const sh = ss.getSheetByName(QUEUE_TAB);
+    if (!sh) return {ok:false, msg:'Queue sheet not found'};
+    const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+    const cStatus = findCol_(header, 'status');
+    const cResp = findCol_(header, 'responded_at');
+    const sheetId = sh.getSheetId();
+
+    if (!cStatus || !cResp) return {ok:false, msg:'Required columns missing (status/responded_at)'};
+
+    const spreadsheetId = getActiveSheetId_();
+
+    // Build a filter view request — show only these visible values for status and sort by responded_at desc
+    const req = {
+      requests: [
+        {
+          addFilterView: {
+            filter: {
+              title: "Today's Replies",
+              range: {
+                sheetId: sheetId,
+                startRowIndex: 1,
+                endRowIndex: Math.max(1000, sh.getLastRow()),
+                startColumnIndex: 0,
+                endColumnIndex: sh.getLastColumn()
+              },
+              criteria: {},
+              sortSpecs: [
+                {
+                  dimensionIndex: cResp - 1,
+                  sortOrder: 'DESCENDING'
+                }
+              ]
+            }
+          }
+        }
+      ]
+    };
+
+    // Add status criteria if possible (ONE_OF_LIST via visibleValues)
+    // For Filter Views the Sheets API does not accept a ONE_OF_LIST condition.
+    // Instead, supply `hiddenValues` listing statuses to hide (non-exhaustive canonical set).
+    // This effectively shows only the desired statuses without relying on an unsupported condition.
+    req.requests[0].addFilterView.filter.criteria[cStatus - 1] = {
+      hiddenValues: ['booked','closed','dnd','wrong_number']
+    };
+
+    try {
+      // Requires enabling Advanced Sheets service (Resources > Advanced Google services...)
+      Sheets.Spreadsheets.batchUpdate(req, spreadsheetId);
+      return {ok:true, msg:'Filter view created (advanced API)'};
+    } catch (e) {
+      // Log the error to Ping for easier diagnosis (includes stack/message)
+      try { logPing_(ss, JSON.stringify({error: String(e), stack: (e && e.stack) || ''}), '', 'filter-view-error'); } catch (_ee) {}
+      // Fallback: create a normal Filter without reordering the sheet (non-destructive)
+      const range = sh.getRange(1,1,Math.max(2, sh.getLastRow()), sh.getLastColumn());
+      try {
+        const f = range.createFilter();
+        // Fallback only creates a normal Filter (no sheet reorder) to avoid changing SoR order.
+        return {ok:true, msg:'Filter created (fallback) — filter applied (no sort)'};
+      } catch (e2) {
+        try { logPing_(ss, JSON.stringify({error2: String(e2), stack: (e2 && e2.stack) || ''}), '', 'filter-view-error2'); } catch (_ee) {}
+        return {ok:false, msg:'Failed to create filter: ' + e2};
+      }
+    }
+  } catch (e) {
+    return {ok:false, msg:'error: ' + e};
+  }
+}
+
+// Zero-arg wrappers so these helpers are runnable from the Apps Script editor.
+function runCreateConfig() {
+  const ok = createConfigSheetAndEnable_(openSS_());
+  Logger.log('createConfigSheetAndEnable_ -> ' + ok);
+  return ok;
+}
+
+function runCreateTodaysRepliesFilterView() {
+  const res = createTodaysRepliesFilterView_();
+  Logger.log('createTodaysRepliesFilterView_ -> ' + JSON.stringify(res));
+  return res;
+}
 
 // lightweight ping logger
 function logPing_(ss, raw, headers, tag) {
@@ -252,6 +370,8 @@ function doGet(e) {
   }
 
   const ss = openSS_();
+  // Respect kill-switch: when OFF, do not write to sheets.
+  if (killSwitchIsOff_(ss)) return ContentService.createTextOutput('ok (disabled)');
   const tag = 'ping-v5-' + new Date().toISOString();
   logPing_(ss, JSON.stringify(e && e.parameter || {}), JSON.stringify(e && e.headers || {}), tag);
   return ContentService.createTextOutput('ok ' + tag);
@@ -283,6 +403,8 @@ function doPost(e) {
   }
 
   const ss = openSS_();
+  // Respect kill-switch: when OFF, do not write to sheets.
+  if (killSwitchIsOff_(ss)) return ContentService.createTextOutput('ok (disabled)');
 
   const body = getBody_(e);
   const eventType = String(body.event_type || body.EventType || body.event || '').toLowerCase();

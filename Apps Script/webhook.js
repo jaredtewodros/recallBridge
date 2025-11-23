@@ -8,7 +8,17 @@
  ************/
 
 // ========= CONFIG =========
-const SHEET_ID   = '1jP3tMRRd-p3xkziVbYwiCjfAfz4gJZOMXOeGrPIorFI';
+// Legacy fallback sheet id (used only when Script Property is not set and enforcement is off)
+const FALLBACK_SHEET_ID = '1jP3tMRRd-p3xkziVbYwiCjfAfz4gJZOMXOeGrPIorFI';
+
+// Prefer a deploy-time Script Property `SHEET_ID`. When configured it will be used
+// for all sheet operations. Leave empty to use the legacy fallback (not recommended).
+let SCRIPT_SHEET_ID = '';
+try {
+  SCRIPT_SHEET_ID = PropertiesService.getScriptProperties().getProperty('SHEET_ID') || '';
+} catch (_e) {
+  SCRIPT_SHEET_ID = '';
+}
 const QUEUE_TAB  = 'Queue';
 const MASTER_TAB = 'Master';
 
@@ -73,7 +83,11 @@ function getBody_(e) {
   return kv;
 }
 
-function openSS_() { return SpreadsheetApp.openById(SHEET_ID); }
+function getActiveSheetId_() {
+  return SCRIPT_SHEET_ID || FALLBACK_SHEET_ID;
+}
+
+function openSS_() { return SpreadsheetApp.openById(getActiveSheetId_()); }
 
 // lightweight ping logger
 function logPing_(ss, raw, headers, tag) {
@@ -227,6 +241,16 @@ function setDoNotTextEverywhere_(ss, phoneNorm, flagBool) {
 
 // ========= GET (ping) =========
 function doGet(e) {
+  // Fail-closed when enforcement is active and no SCRIPT_SHEET_ID is configured
+  if (ENFORCE_KEY && !SCRIPT_SHEET_ID) {
+    const hdrs = (e && e.headers) || {};
+    const raw = e && e.parameter ? JSON.stringify(e.parameter) : '';
+    // Log a diagnostic row then return
+    const ss = SpreadsheetApp.getActive ? SpreadsheetApp.getActive() : null;
+    try { if (ss) logPing_(ss, raw, JSON.stringify(hdrs), 'missing_sheet_config'); } catch (_e) {}
+    return ContentService.createTextOutput('ok');
+  }
+
   const ss = openSS_();
   const tag = 'ping-v5-' + new Date().toISOString();
   logPing_(ss, JSON.stringify(e && e.parameter || {}), JSON.stringify(e && e.headers || {}), tag);
@@ -235,22 +259,30 @@ function doGet(e) {
 
 // ========= POST (main) =========
 function doPost(e) {
-  const ss = openSS_();
-
   // Secret gate (disabled)
   if (ENFORCE_KEY) {
     const hdrs = (e && e.headers) || {};
     const key = hdrs['x-rb-key'] || hdrs['X-RB-Key'] || '';
     // If enforcement is enabled but no key is configured in Script Properties, deny (fail-closed).
     if (!X_RB_KEY) {
-      logPing_(ss, e && e.postData ? e.postData.contents || '' : '', JSON.stringify(hdrs), 'unauthorized_no_config');
+      // best-effort ping to the active spreadsheet (if available) to record the event
+      try { const ssx = SpreadsheetApp.getActive(); logPing_(ssx, e && e.postData ? e.postData.contents || '' : '', JSON.stringify(hdrs), 'unauthorized_no_config'); } catch (_e) {}
       return ContentService.createTextOutput('ok');
     }
     if (key !== X_RB_KEY) {
-      logPing_(ss, e && e.postData ? e.postData.contents || '' : '', JSON.stringify(hdrs), 'unauthorized');
+      try { const ssx = SpreadsheetApp.getActive(); logPing_(ssx, e && e.postData ? e.postData.contents || '' : '', JSON.stringify(hdrs), 'unauthorized'); } catch (_e) {}
       return ContentService.createTextOutput('ok');
     }
   }
+
+  // Fail-closed when enforcement is active and no SCRIPT_SHEET_ID is configured
+  if (ENFORCE_KEY && !SCRIPT_SHEET_ID) {
+    const hdrs = (e && e.headers) || {};
+    try { const ssx = SpreadsheetApp.getActive(); logPing_(ssx, e && e.postData ? e.postData.contents || '' : '', JSON.stringify(hdrs), 'missing_sheet_config'); } catch (_e) {}
+    return ContentService.createTextOutput('ok');
+  }
+
+  const ss = openSS_();
 
   const body = getBody_(e);
   const eventType = String(body.event_type || body.EventType || body.event || '').toLowerCase();

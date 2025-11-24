@@ -41,14 +41,67 @@ def is_true(val):
         return False
     return str(val).strip().lower() in TRUEY
 
+
+def validate_csv(csv_path, preview_rows=10):
+    required_headers = {"e164_phone", "list_tag", "FName", "LName"}
+    seen_phones = set()
+    preview = []
+    total = 0
+    blanks = 0
+    dups = 0
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        headers = set(reader.fieldnames or [])
+        missing = required_headers - headers
+        if missing:
+            print(f"ERROR: Missing required headers: {', '.join(missing)}")
+            return False
+        for idx, row in enumerate(reader, start=1):
+            total += 1
+            phone = row.get("e164_phone", "").strip()
+            if not phone:
+                blanks += 1
+            elif phone in seen_phones:
+                dups += 1
+            else:
+                seen_phones.add(phone)
+            if len(preview) < preview_rows:
+                preview.append(row)
+    print(f"\nCSV VALIDATION SUMMARY:")
+    print(f"  Total rows: {total}")
+    print(f"  Blank e164_phone: {blanks}")
+    print(f"  Duplicate e164_phone: {dups}")
+    print(f"  Unique e164_phone: {len(seen_phones)}")
+    print(f"  Headers: {sorted(headers)}")
+    print(f"\nPreview (first {preview_rows} rows):")
+    for i, row in enumerate(preview, 1):
+        print(f"  [{i}] {row}")
+    if missing or blanks or dups:
+        print("\nERROR: Validation failed. Fix issues above or use --force to override.")
+        return False
+    print("\nValidation passed.")
+    return True
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("csv_path", help="Path to CSV file")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be sent")
-    parser.add_argument("--force", action="store_true", help="Send even if sent_status == sent")
+    parser.add_argument("--force", action="store_true", help="Send even if sent_status == sent or validation fails")
     parser.add_argument("--mode", choices=["link", "manual"], default="link",
                         help="Default send mode; per-row 'mode' column overrides if present")
+    parser.add_argument("--validate", action="store_true", help="Validate CSV and preview rows, then exit")
     args = parser.parse_args()
+
+    if args.validate:
+        ok = validate_csv(args.csv_path)
+        sys.exit(0 if ok else 1)
+
+    # Always validate unless --force
+    if not args.force:
+        ok = validate_csv(args.csv_path)
+        if not ok:
+            print("Aborting due to validation errors. Use --force to override.")
+            sys.exit(1)
 
     # creds
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")

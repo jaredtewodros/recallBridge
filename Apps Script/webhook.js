@@ -233,7 +233,7 @@ function upsertQueue_(ss, fromNorm, noteSnippet, opts) {
   const cDnd   = findCol_(header, 'do_not_text'); // optional
 
   const now = new Date();
-  const storePhone = '1' + fromNorm; // store as 11-digit string (no plus)
+  const storePhone = '+1' + fromNorm; // store as +1XXXXXXXXXX
 
   const lastRow = sh.getLastRow();
   const cols = sh.getLastColumn();
@@ -289,6 +289,8 @@ function updateMasterByTo_(ss, toNorm, updates) {
   const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
   const cPhone  = findCol_(header, 'e164_phone');
   const cSent   = findCol_(header, 'sent_at');
+  const cT1     = findCol_(header, 't1_sent_at');
+  const cT2     = findCol_(header, 't2_sent_at');
   const cClick  = findCol_(header, 'clicked_at');
   const cStage  = findCol_(header, 'followup_stage');
   const cDnd    = findCol_(header, 'do_not_text');
@@ -312,6 +314,23 @@ function updateMasterByTo_(ss, toNorm, updates) {
     } catch (e) {
       // best-effort write if reading fails
       sh.getRange(rIdx, cSent).setValue(updates.sent_at);
+    }
+  }
+
+  // Touch-level sent tracking (t1/t2) — first-write wins per column
+  if (updates.sent_at) {
+    if (cT1 !== -1) {
+      try {
+        const curT1 = sh.getRange(rIdx, cT1).getValue();
+        if (!curT1) sh.getRange(rIdx, cT1).setValue(updates.sent_at);
+      } catch (_e) {}
+    }
+    if (cT2 !== -1) {
+      try {
+        const curT1 = cT1 !== -1 ? sh.getRange(rIdx, cT1).getValue() : null;
+        const curT2 = sh.getRange(rIdx, cT2).getValue();
+        if (curT1 && !curT2) sh.getRange(rIdx, cT2).setValue(updates.sent_at);
+      } catch (_e) {}
     }
   }
 

@@ -20,6 +20,7 @@ def render_link_mode(
     first: Optional[str],
     short_url: str,
     office_phone: str,
+    touch: str = "t1",
     include_opt_out: bool = True,
 ) -> str:
     """
@@ -27,22 +28,35 @@ def render_link_mode(
     """
     tag = _norm_list_tag(list_tag)
     name = _greeting(first)
+    t = (touch or "t1").strip().lower()
 
-    if tag == "past_due":
+    if t == "t2":
+        # Follow-up tone
+        if tag == "past_due":
+            lead = "following up on your overdue recall/cleaning."
+        else:
+            lead = "checking back about your hygiene/recall visit."
         body = (
-            f"Hi {name}, this is Bethesda Dental Smiles. "
-            f"Your recall/cleaning is past due. "
-            f"Book here: {short_url}\n\n"
+            f"Hi {name}, this is Bethesda Dental Smiles, {lead} "
+            f"We still have openings this week. Book here: {short_url}\n\n"
             f"Questions? Call {office_phone}."
         )
     else:
-        # due_soon
-        body = (
-            f"Hi {name}, this is Bethesda Dental Smiles. "
-            f"You’re due for your next hygiene/recall visit. "
-            f"Book here: {short_url}\n\n"
-            f"Questions? Call {office_phone}."
-        )
+        if tag == "past_due":
+            body = (
+                f"Hi {name}, this is Bethesda Dental Smiles. "
+                f"Your recall/cleaning is past due. "
+                f"Book here: {short_url}\n\n"
+                f"Questions? Call {office_phone}."
+            )
+        else:
+            # due_soon
+            body = (
+                f"Hi {name}, this is Bethesda Dental Smiles. "
+                f"You’re due for your next hygiene/recall visit. "
+                f"Book here: {short_url}\n\n"
+                f"Questions? Call {office_phone}."
+            )
 
     if include_opt_out:
         body += OPT_OUT_FOOTER
@@ -54,6 +68,7 @@ def render_manual_mode(
     list_tag: Optional[str],
     first: Optional[str],
     office_phone: str,
+    touch: str = "t1",
     include_opt_out: bool = True,
 ) -> str:
     """
@@ -61,11 +76,15 @@ def render_manual_mode(
     """
     tag = _norm_list_tag(list_tag)
     name = _greeting(first)
+    t = (touch or "t1").strip().lower()
 
-    if tag == "past_due":
-        lead = "Your recall/cleaning is past due."
+    if t == "t2":
+        lead = "Following up about your hygiene/recall visit."
     else:
-        lead = "You’re due for your next hygiene/recall visit."
+        if tag == "past_due":
+            lead = "Your recall/cleaning is past due."
+        else:
+            lead = "You’re due for your next hygiene/recall visit."
 
     body = (
         f"Hi {name}, this is Bethesda Dental Smiles. {lead} "
@@ -86,6 +105,7 @@ def render_message(
     first: Optional[str],
     office_phone: str,
     short_url: Optional[str] = None,
+    touch: str = "t1",
     include_opt_out: bool = True,
 ) -> str:
     mode = (mode or "link").strip().lower()
@@ -94,6 +114,7 @@ def render_message(
             list_tag=list_tag,
             first=first,
             office_phone=office_phone,
+            touch=touch,
             include_opt_out=include_opt_out,
         )
     # default: link mode requires a URL
@@ -104,5 +125,6 @@ def render_message(
         first=first,
         short_url=short_url,
         office_phone=office_phone,
+        touch=touch,
         include_opt_out=include_opt_out,
     )

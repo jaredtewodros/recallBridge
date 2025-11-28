@@ -3,25 +3,27 @@
 Send recall / continuing-care SMS from a CSV via Twilio.
 
 Usage:
-    python3 twilio_send_script.py /path/to/file.csv
+    python3 twilio_send_script.py /path/to/file.csv --touch t1
+    python3 twilio_send_script.py /path/to/file.csv --touch t2
     python3 twilio_send_script.py /path/to/file.csv --dry-run
     python3 twilio_send_script.py /path/to/file.csv --force
     python3 twilio_send_script.py /path/to/file.csv --mode manual   # no scheduler link
     python3 twilio_send_script.py /path/to/file.csv --mode link     # with scheduler link (default)
 
-Rules:
-- skips rows with do_not_text == TRUE/True/true/1/y/yes
-- skips rows with no e164_phone
-- if CSV has a column named "sent_status" and it is "sent", SKIP unless --force
-- list_tag drives copy variant ("past_due" or "due_soon")
-- row-level "mode" column overrides CLI --mode if present (values: "link" or "manual")
-- in link mode, appends ?lt=<list_tag>&pn=<e164_phone> and uses Twilio link shortening
+Rules (CSV-driven; no sheet lookups):
+- Require: e164_phone present and valid, do_not_text is FALSE.
+- T1 include: status in {new, calling, lvm, texted, ""}, responded_at older than 14 days, no booked_at, t1_sent_at empty.
+- T2 include: t1_sent_at set, t2_sent_at empty, do_not_text FALSE, status not in {booked, closed, wrong_number, dnd}, booked_at empty, no reply since T1 (responded_at empty or <= t1_sent_at), T1 age >= 72 hours.
+- sent_status=sent rows are skipped unless --force.
+- list_tag drives copy variant ("past_due" or "due_soon"); row-level "mode" overrides CLI --mode.
+- in link mode, appends ?lt=<list_tag>&pn=<e164_phone> and uses Twilio link shortening.
 """
 
 import csv
 import os
 import sys
 import argparse
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
 from templates import render_message
 from twilio.rest import Client
@@ -35,15 +37,65 @@ OFFICE_PHONE = "301-656-7872"
 MESSAGING_SERVICE_SID = "MGaf34766209ca8d189e1f03fef1f524f4"
 
 TRUEY = {"true", "1", "yes", "y", "t"}
+WORKABLE_STATUSES = {"", "new", "calling", "lvm", "texted"}
+STRONG_STATUSES = {"booked", "closed", "wrong_number", "dnd"}
+RECENT_REPLY_DAYS = 14
+MIN_T2_HOURS = 72
 
 def is_true(val):
     if val is None:
         return False
     return str(val).strip().lower() in TRUEY
 
+def parse_ts(val):
+    """
+    Best-effort timestamp parser for ISO strings or Sheets datetime strings.
+    Returns timezone-aware UTC datetime or None.
+    """
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(s).astimezone(timezone.utc)
+    except Exception:
+        pass
+    # Fallback: try common sheet format e.g., 11/24/2025 18:52:41
+    for fmt in ("%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+    return None
+
+def normalize_e164(val):
+    """
+    Normalize to +1XXXXXXXXXX (last 10 digits). Returns '' if not valid.
+    """
+    if val is None:
+        return ""
+    digits = "".join([c for c in str(val) if c.isdigit()])
+    if len(digits) >= 10:
+        core = digits[-10:]
+        return "+1" + core
+    return ""
 
 def validate_csv(csv_path, preview_rows=10):
-    required_headers = {"e164_phone", "list_tag", "FName", "LName"}
+    required_headers = {
+        "e164_phone",
+        "list_tag",
+        "FName",
+        "LName",
+        "status",
+        "do_not_text",
+        "responded_at",
+        "booked_at",
+        "t1_sent_at",
+        "t2_sent_at",
+    }
     seen_phones = set()
     preview = []
     total = 0
@@ -89,6 +141,8 @@ def main():
     parser.add_argument("--force", action="store_true", help="Send even if sent_status == sent or validation fails")
     parser.add_argument("--mode", choices=["link", "manual"], default="link",
                         help="Default send mode; per-row 'mode' column overrides if present")
+    parser.add_argument("--touch", choices=["t1", "t2"], default="t1",
+                        help="Touch pass to run (t1 or t2). Rows are filtered per-touch.")
     parser.add_argument("--validate", action="store_true", help="Validate CSV and preview rows, then exit")
     args = parser.parse_args()
 
@@ -111,31 +165,58 @@ def main():
         sys.exit(1)
     client = Client(account_sid, auth_token)
 
+    now = datetime.now(timezone.utc)
+
     with open(args.csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for idx, row in enumerate(reader, start=1):
             lname       = row.get("LName", "").strip()
             fname       = row.get("FName", "").strip()
-            e164        = row.get("e164_phone", "").strip()
+            e164_raw    = row.get("e164_phone", "").strip()
+            e164        = normalize_e164(e164_raw)
             do_not_text = row.get("do_not_text", "").strip()
             list_tag    = row.get("list_tag", "").strip()
             sent_status = row.get("sent_status", "").strip()
             row_mode    = (row.get("mode", "") or "").strip().lower()
             effective_mode = row_mode if row_mode in ("link", "manual") else args.mode
+            status      = (row.get("status", "") or "").strip().lower()
+            responded_at = parse_ts(row.get("responded_at"))
+            booked_at    = parse_ts(row.get("booked_at"))
+            t1_sent_at   = parse_ts(row.get("t1_sent_at") or row.get("sent_at"))
+            t2_sent_at   = parse_ts(row.get("t2_sent_at"))
 
-            # 1) skip if do_not_text
+            reasons = []
+
             if is_true(do_not_text):
-                print(f"[{idx}] SKIP {fname} {lname} — do_not_text is true")
-                continue
-
-            # 2) skip if no phone
+                reasons.append("do_not_text is true")
             if not e164:
-                print(f"[{idx}] SKIP {fname} {lname} — missing e164_phone")
-                continue
-
-            # 3) skip if already sent (unless --force)
+                reasons.append("missing/invalid e164_phone")
+            if status in STRONG_STATUSES:
+                reasons.append(f"status={status} (strong)")
+            if booked_at:
+                reasons.append("booked_at present")
+            if responded_at and (now - responded_at) < timedelta(days=RECENT_REPLY_DAYS):
+                reasons.append(f"responded within {RECENT_REPLY_DAYS}d")
             if sent_status and sent_status.lower() == "sent" and not args.force:
-                print(f"[{idx}] SKIP {fname} {lname} — sent_status=sent (use --force to override)")
+                reasons.append("sent_status=sent (use --force to override)")
+
+            if args.touch == "t1":
+                if status not in WORKABLE_STATUSES:
+                    reasons.append(f"status not workable ({status})")
+                if t1_sent_at:
+                    reasons.append("t1_sent_at already set")
+            else:  # T2
+                if not t1_sent_at:
+                    reasons.append("no t1_sent_at (not eligible for T2)")
+                if t2_sent_at:
+                    reasons.append("t2_sent_at already set")
+                if t1_sent_at and (now - t1_sent_at) < timedelta(hours=MIN_T2_HOURS):
+                    reasons.append(f"T1 age < {MIN_T2_HOURS}h")
+                if responded_at and t1_sent_at and responded_at > t1_sent_at:
+                    reasons.append("reply received after T1")
+
+            if reasons:
+                print(f"[{idx}] SKIP {fname} {lname} — {', '.join(reasons)}")
                 continue
 
             # 4) construct body per mode
@@ -152,6 +233,7 @@ def main():
                     first=fname,
                     office_phone=OFFICE_PHONE,
                     short_url=tracking_url,
+                    touch=args.touch,
                 )
             else:
                 # manual callback path (no link)
@@ -161,6 +243,7 @@ def main():
                     list_tag=list_tag,
                     first=fname,
                     office_phone=OFFICE_PHONE,
+                    touch=args.touch,
                 )
 
             if args.dry_run:
@@ -176,7 +259,7 @@ def main():
                     shorten_urls=True,  # no-op in manual mode; required in link mode
                     status_callback=None  # set at the Messaging Service level
                 )
-                print(f"[{idx}] SENT -> to={e164} sid={msg.sid} (mode={effective_mode})")
+                print(f"[{idx}] SENT -> to={e164} sid={msg.sid} (mode={effective_mode}, touch={args.touch})")
             except Exception as e:
                 print(f"[{idx}] ERROR sending to {e164}: {e}")
 

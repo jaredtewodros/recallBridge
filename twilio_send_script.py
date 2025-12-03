@@ -89,7 +89,6 @@ def validate_csv(csv_path, preview_rows=10):
         "list_tag",
         "FName",
         "LName",
-        "status",
         "do_not_text",
         "responded_at",
         "booked_at",

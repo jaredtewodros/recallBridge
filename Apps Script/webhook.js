@@ -306,6 +306,7 @@ function updateMasterByTo_(ss, toNorm, updates) {
     if (normPhone_(rows[r][cPhone-1]) === toNorm) { rIdxs.push(r + 2); }
   }
   if (!rIdxs.length) return;
+  try { logPing_(ss, JSON.stringify({to: toNorm, matches: rIdxs.length, updates}), '', 'master-update-debug'); } catch (_e) {}
   rIdxs.forEach(function(rIdx) {
     // cache current values per row
     const curT1 = cT1 !== -1 ? sh.getRange(rIdx, cT1).getValue() : null;
@@ -482,7 +483,7 @@ function doPost(e) {
   // Click
   if (eventType === 'click' && toNorm) {
     const clickedAt = body.clicked_at || new Date().toISOString();
-    updateMasterByTo_(ss, toNorm, { clicked_at: clickedAt, followup_stage: 2, forceStage: true });
+    updateMasterByTo_(ss, toNorm, { clicked_at: clickedAt, followup_stage: 2, forceStage: true, forceClicked: true });
     return ContentService.createTextOutput('ok');
   }
 
@@ -490,7 +491,7 @@ function doPost(e) {
   if (eventType === 'delivery' || msgStatus === 'sent' || msgStatus === 'delivered') {
     if (toNorm) {
       const sentAt = body.delivered_at || new Date().toISOString();
-      updateMasterByTo_(ss, toNorm, { sent_at: sentAt, followup_stage: 1 });
+      updateMasterByTo_(ss, toNorm, { sent_at: sentAt, t2_sent_at: sentAt, followup_stage: 1, forceStage: true, forceT2: true });
     }
     return ContentService.createTextOutput('ok');
   }

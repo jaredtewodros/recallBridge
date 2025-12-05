@@ -307,6 +307,10 @@ function updateMasterByTo_(ss, toNorm, updates) {
   }
   if (!rIdxs.length) return;
   rIdxs.forEach(function(rIdx) {
+    // cache current values per row
+    const curT1 = cT1 !== -1 ? sh.getRange(rIdx, cT1).getValue() : null;
+    const curT2 = cT2 !== -1 ? sh.getRange(rIdx, cT2).getValue() : null;
+
     // sent_at / clicked_at: only set if empty (first-write wins) unless caller forces it
     if (cSent !== -1 && updates.sent_at) {
       try {
@@ -318,16 +322,17 @@ function updateMasterByTo_(ss, toNorm, updates) {
     }
 
     // Touch-level sent tracking (t1/t2) — first-write wins per column.
-    if (updates.sent_at && cT1 !== -1) {
-      try {
-        const curT1 = sh.getRange(rIdx, cT1).getValue();
-        if (!curT1) sh.getRange(rIdx, cT1).setValue(updates.sent_at);
-      } catch (_e) {}
-    }
     if (updates.t2_sent_at && cT2 !== -1) {
       try {
-        const curT2 = sh.getRange(rIdx, cT2).getValue();
         if (!curT2 || updates.forceT2) sh.getRange(rIdx, cT2).setValue(updates.t2_sent_at);
+      } catch (_e) {}
+    } else if (updates.sent_at && cT1 !== -1) {
+      try {
+        if (!curT1) {
+          sh.getRange(rIdx, cT1).setValue(updates.sent_at);
+        } else if (cT2 !== -1 && !curT2) {
+          sh.getRange(rIdx, cT2).setValue(updates.sent_at);
+        }
       } catch (_e) {}
     }
 

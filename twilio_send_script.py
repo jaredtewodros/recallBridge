@@ -127,9 +127,11 @@ def validate_csv(csv_path, preview_rows=10):
     print(f"\nPreview (first {preview_rows} rows):")
     for i, row in enumerate(preview, 1):
         print(f"  [{i}] {row}")
-    if missing or blanks or dups:
+    if missing or blanks:
         print("\nERROR: Validation failed. Fix issues above or use --force to override.")
         return False
+    if dups:
+        print("\nWARNING: Duplicate e164_phone detected in CSV; duplicates will be skipped at send time.")
     print("\nValidation passed.")
     return True
 
@@ -165,6 +167,7 @@ def main():
     client = Client(account_sid, auth_token)
 
     now = datetime.now(timezone.utc)
+    seen_phones = set()
 
     with open(args.csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -198,6 +201,8 @@ def main():
                 reasons.append(f"responded within {RECENT_REPLY_DAYS}d")
             if sent_status and sent_status.lower() == "sent" and not args.force:
                 reasons.append("sent_status=sent (use --force to override)")
+            if e164 and e164 in seen_phones:
+                reasons.append("duplicate phone already processed in this file")
 
             if args.touch == "t1":
                 if status not in WORKABLE_STATUSES:
@@ -217,6 +222,8 @@ def main():
             if reasons:
                 print(f"[{idx}] SKIP {fname} {lname} — {', '.join(reasons)}")
                 continue
+            if e164:
+                seen_phones.add(e164)
 
             # 4) construct body per mode
             body = ""

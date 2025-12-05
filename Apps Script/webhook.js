@@ -301,54 +301,53 @@ function updateMasterByTo_(ss, toNorm, updates) {
   const cols = sh.getLastColumn();
   const rows = lastRow > 1 ? sh.getRange(2,1,lastRow-1,cols).getValues() : [];
 
-  let rIdx = -1;
+  const rIdxs = [];
   for (let r = 0; r < rows.length; r++) {
-    if (normPhone_(rows[r][cPhone-1]) === toNorm) { rIdx = r + 2; break; }
+    if (normPhone_(rows[r][cPhone-1]) === toNorm) { rIdxs.push(r + 2); }
   }
-  if (rIdx === -1) return;
-  // sent_at / clicked_at: only set if empty (first-write wins) unless caller forces it
-  if (cSent !== -1 && updates.sent_at) {
-    try {
-      const curSent = sh.getRange(rIdx, cSent).getValue();
-      if (!curSent || updates.forceSent) sh.getRange(rIdx, cSent).setValue(updates.sent_at);
-    } catch (e) {
-      // best-effort write if reading fails
-      sh.getRange(rIdx, cSent).setValue(updates.sent_at);
+  if (!rIdxs.length) return;
+  rIdxs.forEach(function(rIdx) {
+    // sent_at / clicked_at: only set if empty (first-write wins) unless caller forces it
+    if (cSent !== -1 && updates.sent_at) {
+      try {
+        const curSent = sh.getRange(rIdx, cSent).getValue();
+        if (!curSent || updates.forceSent) sh.getRange(rIdx, cSent).setValue(updates.sent_at);
+      } catch (e) {
+        sh.getRange(rIdx, cSent).setValue(updates.sent_at);
+      }
     }
-  }
 
-  // Touch-level sent tracking (t1/t2) — first-write wins per column.
-  // Only write t1 on initial send; only write t2 when explicitly provided by caller.
-  if (updates.sent_at && cT1 !== -1) {
-    try {
-      const curT1 = sh.getRange(rIdx, cT1).getValue();
-      if (!curT1) sh.getRange(rIdx, cT1).setValue(updates.sent_at);
-    } catch (_e) {}
-  }
-  if (updates.t2_sent_at && cT2 !== -1) {
-    try {
-      const curT2 = sh.getRange(rIdx, cT2).getValue();
-      if (!curT2 || updates.forceT2) sh.getRange(rIdx, cT2).setValue(updates.t2_sent_at);
-    } catch (_e) {}
-  }
-
-  if (cClick !== -1 && updates.clicked_at) {
-    try {
-      const curClicked = sh.getRange(rIdx, cClick).getValue();
-      if (!curClicked || updates.forceClicked) sh.getRange(rIdx, cClick).setValue(updates.clicked_at);
-    } catch (e) {
-      // best-effort write if reading fails
-      sh.getRange(rIdx, cClick).setValue(updates.clicked_at);
+    // Touch-level sent tracking (t1/t2) — first-write wins per column.
+    if (updates.sent_at && cT1 !== -1) {
+      try {
+        const curT1 = sh.getRange(rIdx, cT1).getValue();
+        if (!curT1) sh.getRange(rIdx, cT1).setValue(updates.sent_at);
+      } catch (_e) {}
     }
-  }
+    if (updates.t2_sent_at && cT2 !== -1) {
+      try {
+        const curT2 = sh.getRange(rIdx, cT2).getValue();
+        if (!curT2 || updates.forceT2) sh.getRange(rIdx, cT2).setValue(updates.t2_sent_at);
+      } catch (_e) {}
+    }
 
-  if (typeof updates.followup_stage !== 'undefined' && cStage !== -1) {
-    const cur = sh.getRange(rIdx, cStage).getValue();
-    if (!cur || updates.forceStage) sh.getRange(rIdx, cStage).setValue(updates.followup_stage);
-  }
-  if (typeof updates.dnd === 'boolean' && cDnd !== -1) {
-    sh.getRange(rIdx, cDnd).setValue(updates.dnd);
-  }
+    if (cClick !== -1 && updates.clicked_at) {
+      try {
+        const curClicked = sh.getRange(rIdx, cClick).getValue();
+        if (!curClicked || updates.forceClicked) sh.getRange(rIdx, cClick).setValue(updates.clicked_at);
+      } catch (e) {
+        sh.getRange(rIdx, cClick).setValue(updates.clicked_at);
+      }
+    }
+
+    if (typeof updates.followup_stage !== 'undefined' && cStage !== -1) {
+      const cur = sh.getRange(rIdx, cStage).getValue();
+      if (!cur || updates.forceStage) sh.getRange(rIdx, cStage).setValue(updates.followup_stage);
+    }
+    if (typeof updates.dnd === 'boolean' && cDnd !== -1) {
+      sh.getRange(rIdx, cDnd).setValue(updates.dnd);
+    }
+  });
 }
 
 function setDoNotTextEverywhere_(ss, phoneNorm, flagBool) {
@@ -367,7 +366,6 @@ function setDoNotTextEverywhere_(ss, phoneNorm, flagBool) {
         if (normPhone_(rows[i][cPhone-1]) === phoneNorm) {
           q.getRange(i+2, cDnd).setValue(flagBool);
           if (flagBool && cStat > 0) q.getRange(i+2, cStat).setValue('dnd');
-          break;
         }
       }
     }

@@ -168,6 +168,9 @@ def main():
 
     now = datetime.now(timezone.utc)
     seen_phones = set()
+    sent_count = 0
+    skipped_reasons = {}
+    error_count = 0
 
     with open(args.csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -221,6 +224,8 @@ def main():
 
             if reasons:
                 print(f"[{idx}] SKIP {fname} {lname} — {', '.join(reasons)}")
+                key = ";".join(reasons)
+                skipped_reasons[key] = skipped_reasons.get(key, 0) + 1
                 continue
             if e164:
                 seen_phones.add(e164)
@@ -266,9 +271,20 @@ def main():
                     status_callback=None  # set at the Messaging Service level
                 )
                 print(f"[{idx}] SENT -> to={e164} sid={msg.sid} (mode={effective_mode}, touch={args.touch})")
+                sent_count += 1
             except Exception as e:
                 print(f"[{idx}] ERROR sending to {e164}: {e}")
+                error_count += 1
 
+    # End-of-run summary
+    print("\n=== RUN SUMMARY ===")
+    print(f"Total rows processed: {idx}")
+    print(f"Sent: {sent_count}")
+    print(f"Errors: {error_count}")
+    if skipped_reasons:
+        print("Skipped by reason:")
+        for reason, count in sorted(skipped_reasons.items(), key=lambda x: x[1], reverse=True):
+            print(f"  {count} -> {reason}")
     print("Done.")
 
 if __name__ == "__main__":

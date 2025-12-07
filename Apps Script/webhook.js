@@ -323,11 +323,12 @@ function updateMasterByTo_(ss, toNorm, updates) {
     }
 
     // Touch-level sent tracking (t1/t2) — first-write wins per column.
-    if (updates.t2_sent_at && cT2 !== -1) {
-      try {
-        if (!curT2 || updates.forceT2) sh.getRange(rIdx, cT2).setValue(updates.t2_sent_at);
-      } catch (_e) {}
-    } else if (updates.sent_at && cT1 !== -1) {
+  if (updates.t2_sent_at && cT2 !== -1) {
+    // Only set t2 when T1 already exists; prevents T1 callbacks from filling t2
+    try {
+        if (curT1 && (!curT2 || updates.forceT2)) sh.getRange(rIdx, cT2).setValue(updates.t2_sent_at);
+    } catch (_e) {}
+  } else if (updates.sent_at && cT1 !== -1) {
       try {
         if (!curT1) {
           sh.getRange(rIdx, cT1).setValue(updates.sent_at);
@@ -488,9 +489,18 @@ function doPost(e) {
   }
 
   // Delivery
-  if (eventType === 'delivery' || msgStatus === 'sent' || msgStatus === 'delivered') {
+  if (eventType === 'delivery' || msgStatus === 'sent' || msgStatus === 'delivered' || msgStatus === 'failed' || msgStatus === 'undelivered') {
+    const sentAt = body.delivered_at || new Date().toISOString();
     if (toNorm) {
-      const sentAt = body.delivered_at || new Date().toISOString();
+      // If failure/undelivered, log and do not stamp sent_at
+      if (msgStatus === 'failed' || msgStatus === 'undelivered' || body.error_code) {
+        try {
+          const payload = { to: toNorm, status: msgStatus || 'delivery', error_code: body.error_code || '', sid: body.message_sid || body.MessageSid || '' };
+          logPing_(ss, JSON.stringify(payload), '', 'delivery-fail');
+        } catch (_e) {}
+        return ContentService.createTextOutput('ok');
+      }
+      // Normal sent/delivered path
       updateMasterByTo_(ss, toNorm, { sent_at: sentAt, t2_sent_at: sentAt, followup_stage: 1, forceStage: true, forceT2: true });
     }
     return ContentService.createTextOutput('ok');

@@ -1,0 +1,124 @@
+// Schema.js - required headers and mappings
+
+const CONFIG_KEYS = [
+  "practice_id",
+  "practice_display_name",
+  "timezone",
+  "practice_sheet_id",
+  "upload_folder_id",
+  "imports_folder_id",
+  "import_delimiter",
+  "import_file_extension",
+  "patient_key_strategy",
+  "last_import_source_file_id",
+  "last_import_archived_file_id",
+  "last_imported_at",
+  "recall_due_window_days",
+  "mode",
+  "kill_switch"
+];
+
+const PATIENT_HEADERS = [
+  "patient_key",
+  "external_patient_id",
+  "first_name",
+  "last_name",
+  "first_visit_at",
+  "last_appointment_at",
+  "phone_mobile_raw",
+  "phone_home_raw",
+  "phone_work_raw",
+  "phone_other_raw",
+  "phone_e164",
+  "has_sms_contact",
+  "email",
+  "recall_due_date",
+  "recall_status",
+  "recall_type_name",
+  "recall_type_description",
+  "recall_last_appointment_at",
+  "primary_provider_name",
+  "do_not_text",
+  "complaint_flag",
+  "payer_name_primary_raw",
+  "remaining_amount_ytd_primary_raw",
+  "group_id_primary_raw",
+  "payer_name_secondary_raw",
+  "remaining_amount_ytd_secondary_raw",
+  "group_id_secondary_raw",
+  "source_last_imported_at",
+  "source_last_import_source_file_id",
+  "source_last_import_archived_file_id",
+  "updated_at"
+];
+
+const QUEUE_HEADERS = [
+  "campaign_id",
+  "touch_type",
+  "patient_key",
+  "phone_e164",
+  "eligible",
+  "ineligible_reason",
+  "recall_due_date",
+  "recall_status",
+  "do_not_text",
+  "computed_at"
+];
+
+const EVENT_HEADERS = [
+  "event_id",
+  "event_type",
+  "run_id",
+  "occurred_at",
+  "practice_id",
+  "notes",
+  "payload_json"
+];
+
+const REQUIRED_SHEETS = ["00_README", "10_Config", "20_Import_Raw", "30_Patients", "50_Queue", "70_EventLog"];
+
+const DENTRIX_MAPPING = {
+  LName: "last_name",
+  FName: "first_name",
+  Chart: "external_patient_id",
+  FirstVisit: "first_visit_at",
+  LastVisit: "last_appointment_at",
+  MPhone: "phone_mobile_raw",
+  HPhone: "phone_home_raw",
+  WPhone: "phone_work_raw",
+  OtherPhone: "phone_other_raw",
+  EMailAddress: "email",
+  CC_DueDate: "recall_due_date",
+  CC_TypeName: "recall_type_name",
+  CC_TypeDesc: "recall_type_description",
+  CC_ApptDate: "recall_last_appointment_at",
+  Prov_Name: "primary_provider_name",
+  PIns_Name: "payer_name_primary_raw",
+  PIns_RemBenf: "remaining_amount_ytd_primary_raw",
+  PIns_GroupName: "group_id_primary_raw",
+  SIns_Name: "payer_name_secondary_raw",
+  SIns_RemBenf: "remaining_amount_ytd_secondary_raw",
+  SIns_GroupName: "group_id_secondary_raw"
+};
+
+const EVENT_TYPES = {
+  TEMPLATE_CREATE_START: "RUN_TEMPLATE_CREATE_START",
+  TEMPLATE_CREATE_PASS: "RUN_TEMPLATE_CREATE_PASS",
+  TEMPLATE_CREATE_FAIL: "RUN_TEMPLATE_CREATE_FAIL",
+  PROVISION_START: "RUN_PROVISION_START",
+  PROVISION_PASS: "RUN_PROVISION_PASS",
+  PROVISION_FAIL: "RUN_PROVISION_FAIL",
+  PREFLIGHT_START: "RUN_PREFLIGHT_START",
+  PREFLIGHT_PASS: "RUN_PREFLIGHT_PASS",
+  PREFLIGHT_FAIL: "RUN_PREFLIGHT_FAIL",
+  IMPORT_START: "RUN_IMPORT_START",
+  IMPORT_PASS: "RUN_IMPORT_PASS",
+  IMPORT_FAIL: "RUN_IMPORT_FAIL",
+  REFRESH_START: "RUN_REFRESH_START",
+  REFRESH_PASS: "RUN_REFRESH_PASS",
+  REFRESH_FAIL: "RUN_REFRESH_FAIL",
+  QUEUE_START: "RUN_QUEUE_START",
+  QUEUE_PASS: "RUN_QUEUE_PASS",
+  QUEUE_FAIL: "RUN_QUEUE_FAIL",
+  ERROR: "ERROR"
+};

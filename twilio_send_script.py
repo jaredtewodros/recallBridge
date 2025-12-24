@@ -40,7 +40,7 @@ TRUEY = {"true", "1", "yes", "y", "t"}
 WORKABLE_STATUSES = {"", "new", "calling", "lvm", "texted"}
 STRONG_STATUSES = {"booked", "closed", "wrong_number", "dnd"}
 RECENT_REPLY_DAYS = 14
-MIN_T2_HOURS = 72
+MIN_T2_HOURS = 60
 
 def is_true(val):
     if val is None:

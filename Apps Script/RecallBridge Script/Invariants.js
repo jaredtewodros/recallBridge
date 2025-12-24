@@ -1,6 +1,6 @@
 // Invariants.js - stats, invariant checks, and summaries
 
-function normalizeBool_(v) {
+function normalizeBool(v) {
   if (v === true) return true;
   if (v === false) return false;
   if (v === 1 || v === "1") return true;
@@ -9,7 +9,7 @@ function normalizeBool_(v) {
   return s === "true" || s === "yes" || s === "y" || s === "t";
 }
 
-function computeStatsFromSheets_(practiceSheetId) {
+function computeStatsFromSheets(practiceSheetId) {
   const ss = SpreadsheetApp.openById(practiceSheetId);
   const cfg = getConfig(ss);
   const stats = {
@@ -57,9 +57,9 @@ function computeStatsFromSheets_(practiceSheetId) {
         const pk = row[hmap["patient_key"]] || "";
         const extId = row[hmap["external_patient_id"]] || "";
         const phone = row[hmap["phone_e164"]] || "";
-        const hasSms = normalizeBool_(row[hmap["has_sms_contact"]]);
-        const dnt = normalizeBool_(row[hmap["do_not_text"]]);
-        const complaint = normalizeBool_(row[hmap["complaint_flag"]]);
+        const hasSms = normalizeBool(row[hmap["has_sms_contact"]]);
+        const dnt = normalizeBool(row[hmap["do_not_text"]]);
+        const complaint = normalizeBool(row[hmap["complaint_flag"]]);
         const recallDate = row[hmap["recall_due_date"]] || "";
         const recallStatus = row[hmap["recall_status"]] || "";
         const nonEmpty = header.some(function (_, idx) { return String(row[idx] || "").trim() !== ""; });
@@ -86,7 +86,7 @@ function computeStatsFromSheets_(practiceSheetId) {
       data.slice(1).forEach(function (row) {
         const pk = row[hmap["patient_key"]] || "";
         if (!pk) return;
-        const eligible = normalizeBool_(row[hmap["eligible"]]);
+        const eligible = normalizeBool(row[hmap["eligible"]]);
         const reason = (row[hmap["ineligible_reason"]] || "").toString().trim() || "(blank)";
         stats.queue_total += 1;
         if (eligible) {
@@ -102,21 +102,21 @@ function computeStatsFromSheets_(practiceSheetId) {
   return stats;
 }
 
-function logRunSummary_(practiceSheetId, runId, phaseName, statsObject) {
+function logRunSummary(practiceSheetId, runId, phaseName, statsObject) {
   const ss = SpreadsheetApp.openById(practiceSheetId);
   const practiceId = statsObject.practice_id || "";
   const notes = "Run summary: patients_total=" + statsObject.patients_total + ", queue_eligible=" + statsObject.queue_eligible;
   logEvent(ss, EVENT_TYPES.RUN_SUMMARY, runId, practiceId, notes, statsObject);
 }
 
-function AssertInvariants_(practiceSheetId, runId, statsObject) {
+function AssertInvariants(practiceSheetId, runId, statsObject) {
   const ss = SpreadsheetApp.openById(practiceSheetId);
   const cfg = getConfig(ss);
   const practiceId = cfg.practice_id || "";
 
   const minSmsRate = parseFloat(cfg.invariant_min_sms_contact_rate || 0.30);
   const maxInvalidRecallRate = parseFloat(cfg.invariant_max_invalid_recall_date_rate || 0.10);
-  const allowZeroEligible = normalizeBool_(cfg.invariant_allow_zero_eligible || false);
+  const allowZeroEligible = normalizeBool(cfg.invariant_allow_zero_eligible || false);
   const queueMode = (cfg.invariant_queue_mode || "ALL_PATIENTS").toUpperCase();
 
   const failures = [];

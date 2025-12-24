@@ -16,4 +16,4 @@ function menuImportLatest() { ImportLatestDentrixOut(SpreadsheetApp.getActive().
 function menuImportDentrix() { ImportDentrixFromRaw(SpreadsheetApp.getActive().getId()); }
 function menuRefresh() { RefreshPatients(SpreadsheetApp.getActive().getId()); }
 function menuQueue() { BuildQueue(SpreadsheetApp.getActive().getId(), "T1"); }
-function menuDryRun() { DryRunImportRefreshQueue_(SpreadsheetApp.getActive().getId()); }
+function menuDryRun() { DryRunImportRefreshQueue(SpreadsheetApp.getActive().getId()); }

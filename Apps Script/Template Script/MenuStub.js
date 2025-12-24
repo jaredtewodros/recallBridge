@@ -13,4 +13,4 @@ function rbImportLatest(){ RBLib.ImportLatestDentrixOut(SpreadsheetApp.getActive
 function rbImportDentrix(){ RBLib.ImportDentrixFromRaw(SpreadsheetApp.getActive().getId()); }
 function rbRefresh(){ RBLib.RefreshPatients(SpreadsheetApp.getActive().getId()); }
 function rbQueue(){ RBLib.BuildQueue(SpreadsheetApp.getActive().getId(), 'T1'); }
-function rbDryRun(){ RBLib.DryRunImportRefreshQueue_(SpreadsheetApp.getActive().getId()); }
+function rbDryRun(){ RBLib.DryRunImportRefreshQueue(SpreadsheetApp.getActive().getId()); }

@@ -1,6 +1,6 @@
 // DryRun.js - orchestrated dry run (Import + Refresh + Queue + Invariants)
 
-function DryRunImportRefreshQueue_(practiceSheetId) {
+function DryRunImportRefreshQueue(practiceSheetId) {
   const rid = runId(); // reuse helper
   const ss = SpreadsheetApp.openById(practiceSheetId);
   const cfg = getConfig(ss);
@@ -11,9 +11,9 @@ function DryRunImportRefreshQueue_(practiceSheetId) {
     ImportDentrixFromRaw(practiceSheetId);
     RefreshPatients(practiceSheetId);
     BuildQueue(practiceSheetId, "T1");
-    const stats = computeStatsFromSheets_(practiceSheetId);
-    logRunSummary_(practiceSheetId, rid, "DRY_RUN", stats);
-    AssertInvariants_(practiceSheetId, rid, stats);
+    const stats = computeStatsFromSheets(practiceSheetId);
+    logRunSummary(practiceSheetId, rid, "DRY_RUN", stats);
+    AssertInvariants(practiceSheetId, rid, stats);
     logEvent(ss, EVENT_TYPES.RUN_DRY_RUN_PASS, rid, practiceId, "Dry run pass", {});
     return stats;
   } catch (e) {

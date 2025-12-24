@@ -7,6 +7,7 @@ function onOpen() {
     .addItem("Import Dentrix from Raw", "menuImportDentrix")
     .addItem("Refresh Patients", "menuRefresh")
     .addItem("Build Queue (T1)", "menuQueue")
+    .addItem("Dry Run (Import + Refresh + Queue + Invariants)", "menuDryRun")
     .addToUi();
 }
 
@@ -15,3 +16,4 @@ function menuImportLatest() { ImportLatestDentrixOut(SpreadsheetApp.getActive().
 function menuImportDentrix() { ImportDentrixFromRaw(SpreadsheetApp.getActive().getId()); }
 function menuRefresh() { RefreshPatients(SpreadsheetApp.getActive().getId()); }
 function menuQueue() { BuildQueue(SpreadsheetApp.getActive().getId(), "T1"); }
+function menuDryRun() { DryRunImportRefreshQueue_(SpreadsheetApp.getActive().getId()); }

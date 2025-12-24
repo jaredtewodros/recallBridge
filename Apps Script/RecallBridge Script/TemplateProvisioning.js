@@ -19,7 +19,13 @@ function CreateVersionedTemplateV1() {
     // 00_README
     const readme = ss.getSheetByName("00_README");
     readme.clear();
-    readme.appendRow(["RecallBridge Template v1"]);
+    readme.getRange(1,1,5,1).setValues([
+      ["RecallBridge Template v1"],
+      ["Operator rules:"],
+      ["- Only edit 10_Config."],
+      ["- In 30_Patients, only do_not_text and complaint_flag may be edited manually."],
+      ["- Do not edit 50_Queue (overwritten); do not reorder/rename headers (Preflight enforces)."]
+    ]);
     readme.setFrozenRows(1);
 
     // 10_Config
@@ -72,6 +78,10 @@ function CreateVersionedTemplateV1() {
       if (cfgValues[i][0] === "import_file_extension") cfg.getRange(i + 1, 2).setValue("out");
       if (cfgValues[i][0] === "patient_key_strategy") cfg.getRange(i + 1, 2).setValue("SHA256(practice_id:external_patient_id)");
       if (cfgValues[i][0] === "recall_due_window_days") cfg.getRange(i + 1, 2).setValue(30);
+      if (cfgValues[i][0] === "invariant_min_sms_contact_rate") cfg.getRange(i + 1, 2).setValue(0.30);
+      if (cfgValues[i][0] === "invariant_max_invalid_recall_date_rate") cfg.getRange(i + 1, 2).setValue(0.10);
+      if (cfgValues[i][0] === "invariant_allow_zero_eligible") cfg.getRange(i + 1, 2).setValue(false);
+      if (cfgValues[i][0] === "invariant_queue_mode") cfg.getRange(i + 1, 2).setValue("ALL_PATIENTS");
     }
 
     // Move template into Templates folder via DriveApp (shared-drive safe)
@@ -121,6 +131,10 @@ function ProvisionPracticeEngineFromLatestTemplate(practice_id, practice_display
       import_file_extension: "out",
       patient_key_strategy: "SHA256(practice_id:external_patient_id)",
       recall_due_window_days: 30,
+      invariant_min_sms_contact_rate: 0.30,
+      invariant_max_invalid_recall_date_rate: 0.10,
+      invariant_allow_zero_eligible: false,
+      invariant_queue_mode: "ALL_PATIENTS",
       mode: "DRY_RUN",
       kill_switch: "OFF"
     });

@@ -15,7 +15,11 @@ const CONFIG_KEYS = [
   "last_imported_at",
   "recall_due_window_days",
   "mode",
-  "kill_switch"
+  "kill_switch",
+  "invariant_min_sms_contact_rate",
+  "invariant_max_invalid_recall_date_rate",
+  "invariant_allow_zero_eligible",
+  "invariant_queue_mode"
 ];
 
 const PATIENT_HEADERS = [
@@ -120,5 +124,11 @@ const EVENT_TYPES = {
   QUEUE_START: "RUN_QUEUE_START",
   QUEUE_PASS: "RUN_QUEUE_PASS",
   QUEUE_FAIL: "RUN_QUEUE_FAIL",
+  RUN_SUMMARY: "RUN_SUMMARY",
+  RUN_INVARIANTS_FAIL: "RUN_INVARIANTS_FAIL",
+  RUN_INVARIANTS_PASS: "RUN_INVARIANTS_PASS",
+  RUN_DRY_RUN_START: "RUN_DRY_RUN_START",
+  RUN_DRY_RUN_PASS: "RUN_DRY_RUN_PASS",
+  RUN_DRY_RUN_FAIL: "RUN_DRY_RUN_FAIL",
   ERROR: "ERROR"
 };

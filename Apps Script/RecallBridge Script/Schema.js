@@ -19,7 +19,10 @@ const CONFIG_KEYS = [
   "invariant_min_sms_contact_rate",
   "invariant_max_invalid_recall_date_rate",
   "invariant_allow_zero_eligible",
-  "invariant_queue_mode"
+  "invariant_queue_mode",
+  "active_campaign_id",
+  "touches_dry_run_default",
+  "send_rate_limit_per_minute"
 ];
 
 const PATIENT_HEADERS = [
@@ -69,6 +72,26 @@ const QUEUE_HEADERS = [
   "computed_at"
 ];
 
+const TOUCHES_HEADERS = [
+  "touch_id",
+  "practice_id",
+  "campaign_id",
+  "touch_type",
+  "patient_key",
+  "phone_e164",
+  "eligible",
+  "ineligible_reason",
+  "planned_at",
+  "send_status",
+  "dry_run",
+  "msg_sid",
+  "sent_at",
+  "error_code",
+  "error_message",
+  "created_at",
+  "updated_at"
+];
+
 const EVENT_HEADERS = [
   "event_id",
   "event_type",
@@ -79,7 +102,7 @@ const EVENT_HEADERS = [
   "payload_json"
 ];
 
-const REQUIRED_SHEETS = ["00_README", "10_Config", "20_Import_Raw", "30_Patients", "50_Queue", "70_EventLog"];
+const REQUIRED_SHEETS = ["00_README", "10_Config", "20_Import_Raw", "30_Patients", "50_Queue", "60_Touches", "70_EventLog"];
 
 const DENTRIX_MAPPING = {
   LName: "last_name",
@@ -124,6 +147,12 @@ const EVENT_TYPES = {
   QUEUE_START: "RUN_QUEUE_START",
   QUEUE_PASS: "RUN_QUEUE_PASS",
   QUEUE_FAIL: "RUN_QUEUE_FAIL",
+  RUN_CREATE_TOUCHES_START: "RUN_CREATE_TOUCHES_START",
+  RUN_CREATE_TOUCHES_PASS: "RUN_CREATE_TOUCHES_PASS",
+  RUN_CREATE_TOUCHES_FAIL: "RUN_CREATE_TOUCHES_FAIL",
+  RUN_SEND_DRY_RUN_START: "RUN_SEND_DRY_RUN_START",
+  RUN_SEND_DRY_RUN_PASS: "RUN_SEND_DRY_RUN_PASS",
+  RUN_SEND_DRY_RUN_FAIL: "RUN_SEND_DRY_RUN_FAIL",
   RUN_SUMMARY: "RUN_SUMMARY",
   RUN_INVARIANTS_FAIL: "RUN_INVARIANTS_FAIL",
   RUN_INVARIANTS_PASS: "RUN_INVARIANTS_PASS",

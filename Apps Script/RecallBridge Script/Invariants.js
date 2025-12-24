@@ -28,6 +28,11 @@ function computeStatsFromSheets(practiceSheetId) {
     queue_eligible: 0,
     queue_ineligible: 0,
     queue_ineligible_by_reason: {},
+    touches_total: 0,
+    touches_ready: 0,
+    touches_skipped: 0,
+    touches_would_send: 0,
+    touches_by_status: {},
     import_source_file_id: cfg.last_import_source_file_id || null,
     import_archived_file_id: cfg.last_import_archived_file_id || null,
     import_timestamp: cfg.last_imported_at || null,
@@ -99,6 +104,26 @@ function computeStatsFromSheets(practiceSheetId) {
     }
   }
 
+  // Touches
+  const tSh = getSheetByName(ss, "60_Touches");
+  if (tSh) {
+    const data = tSh.getDataRange().getValues();
+    if (data.length > 1) {
+      const header = data[0];
+      const hmap = headerMap(header);
+      data.slice(1).forEach(function (row) {
+        const tid = row[hmap["touch_id"]] || "";
+        if (!tid) return;
+        const status = (row[hmap["send_status"]] || "").toString().toUpperCase();
+        stats.touches_total += 1;
+        stats.touches_by_status[status] = (stats.touches_by_status[status] || 0) + 1;
+        if (status === "READY") stats.touches_ready += 1;
+        if (status === "SKIPPED") stats.touches_skipped += 1;
+        if (status === "WOULD_SEND") stats.touches_would_send += 1;
+      });
+    }
+  }
+
   return stats;
 }
 
@@ -118,6 +143,7 @@ function AssertInvariants(practiceSheetId, runId, statsObject) {
   const maxInvalidRecallRate = parseFloat(cfg.invariant_max_invalid_recall_date_rate || 0.10);
   const allowZeroEligible = normalizeBool(cfg.invariant_allow_zero_eligible || false);
   const queueMode = (cfg.invariant_queue_mode || "ALL_PATIENTS").toUpperCase();
+  const activeCampaign = cfg.active_campaign_id || "";
 
   const failures = [];
   const pushFail = function (code, msg, details) {
@@ -153,6 +179,11 @@ function AssertInvariants(practiceSheetId, runId, statsObject) {
   }
   if (statsObject.missing_external_patient_id_count > 0) {
     pushFail("I7b", "missing external_patient_id rows", { missing_external_patient_id_count: statsObject.missing_external_patient_id_count });
+  }
+  if (activeCampaign && statsObject.queue_eligible > 0) {
+    if (statsObject.touches_ready !== statsObject.queue_eligible) {
+      pushFail("I8", "touches_ready must equal queue_eligible for active campaign", { touches_ready: statsObject.touches_ready, queue_eligible: statsObject.queue_eligible, campaign: activeCampaign });
+    }
   }
 
   if (failures.length) {

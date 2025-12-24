@@ -19,12 +19,14 @@ function CreateVersionedTemplateV1() {
     // 00_README
     const readme = ss.getSheetByName("00_README");
     readme.clear();
-    readme.getRange(1,1,5,1).setValues([
+    readme.getRange(1,1,7,1).setValues([
       ["RecallBridge Template v1"],
       ["Operator rules:"],
       ["- Only edit 10_Config."],
       ["- In 30_Patients, only do_not_text and complaint_flag may be edited manually."],
-      ["- Do not edit 50_Queue (overwritten); do not reorder/rename headers (Preflight enforces)."]
+      ["- Do not edit 50_Queue (overwritten)."],
+      ["- Do not edit 60_Touches (append-only)."],
+      ["- Do not reorder/rename headers (Preflight enforces)."]
     ]);
     readme.setFrozenRows(1);
 
@@ -34,36 +36,50 @@ function CreateVersionedTemplateV1() {
     cfg.appendRow(["key", "value"]);
     CONFIG_KEYS.forEach(function (k) { cfg.appendRow([k, ""]); });
     cfg.setFrozenRows(1);
+    cfg.getRange(1,1,1,cfg.getLastColumn()).setFontWeight("bold");
 
     // 20_Import_Raw placeholder header (overwritten on import)
     const raw = ss.getSheetByName("20_Import_Raw");
     raw.clear();
     raw.appendRow(["placeholder"]);
     raw.setFrozenRows(1);
+    raw.getRange(1,1,1,raw.getLastColumn()).setFontWeight("bold");
 
     // 30_Patients
     const p = ss.getSheetByName("30_Patients");
     p.clear();
     p.appendRow(PATIENT_HEADERS);
     p.setFrozenRows(1);
+    p.getRange(1,1,1,p.getLastColumn()).setFontWeight("bold");
 
     // 50_Queue
     const q = ss.getSheetByName("50_Queue");
     q.clear();
     q.appendRow(QUEUE_HEADERS);
     q.setFrozenRows(1);
+    q.getRange(1,1,1,q.getLastColumn()).setFontWeight("bold");
+
+    // 60_Touches
+    const t = ss.getSheetByName("60_Touches") || ss.insertSheet("60_Touches");
+    t.clear();
+    t.appendRow(TOUCHES_HEADERS);
+    t.setFrozenRows(1);
+    t.getRange(1,1,1,t.getLastColumn()).setFontWeight("bold");
 
     // 70_EventLog
     const ev = ss.getSheetByName("70_EventLog");
     ev.clear();
     ev.appendRow(EVENT_HEADERS);
     ev.setFrozenRows(1);
+    ev.getRange(1,1,1,ev.getLastColumn()).setFontWeight("bold");
 
-    // Protect header rows
-    [cfg, raw, p, q, ev].forEach(function (sh) {
+    // Protect header rows; only data rows remain editable
+    [cfg, raw, p, q, ev, t].forEach(function (sh) {
       const prot = sh.protect().setDescription(sh.getName() + " header");
       const unprot = sh.getRange(2, 1, sh.getMaxRows() - 1, sh.getMaxColumns());
       prot.setUnprotectedRanges([unprot]);
+      prot.removeEditors(prot.getEditors());
+      if (prot.canDomainEdit()) prot.setDomainEdit(false);
     });
 
     // Data validation for mode/kill_switch
@@ -82,6 +98,9 @@ function CreateVersionedTemplateV1() {
       if (cfgValues[i][0] === "invariant_max_invalid_recall_date_rate") cfg.getRange(i + 1, 2).setValue(0.10);
       if (cfgValues[i][0] === "invariant_allow_zero_eligible") cfg.getRange(i + 1, 2).setValue(false);
       if (cfgValues[i][0] === "invariant_queue_mode") cfg.getRange(i + 1, 2).setValue("ALL_PATIENTS");
+      if (cfgValues[i][0] === "active_campaign_id") cfg.getRange(i + 1, 2).setValue("");
+      if (cfgValues[i][0] === "touches_dry_run_default") cfg.getRange(i + 1, 2).setValue(true);
+      if (cfgValues[i][0] === "send_rate_limit_per_minute") cfg.getRange(i + 1, 2).setValue(60);
     }
 
     // Move template into Templates folder via DriveApp (shared-drive safe)
@@ -135,6 +154,9 @@ function ProvisionPracticeEngineFromLatestTemplate(practice_id, practice_display
       invariant_max_invalid_recall_date_rate: 0.10,
       invariant_allow_zero_eligible: false,
       invariant_queue_mode: "ALL_PATIENTS",
+      active_campaign_id: "",
+      touches_dry_run_default: true,
+      send_rate_limit_per_minute: 60,
       mode: "DRY_RUN",
       kill_switch: "OFF"
     });

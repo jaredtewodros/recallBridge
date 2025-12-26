@@ -344,6 +344,14 @@ function RunWebhookE2ETest(practiceId, touchType, campaignId, live) {
   return instructions;
 }
 
+// Convenience wrapper so you can run from the editor without parameters.
+// Requires Script Property RB_DEFAULT_TEST_PRACTICE_ID to be set to a valid practice_id.
+function RunWebhookE2ETestDefault() {
+  const pid = PropertiesService.getScriptProperties().getProperty("RB_DEFAULT_TEST_PRACTICE_ID");
+  if (!pid) throw new Error("Set RB_DEFAULT_TEST_PRACTICE_ID Script Property to the practice_id you want to test.");
+  return RunWebhookE2ETest(pid, "T1", "webhook_e2e", false);
+}
+
 // ===== Runbook (manual steps) =====
 // 1) Publish this project as a Web App (Deploy > New Deployment > Web app) and note the /exec URL.
 // 2) Set Script Properties:

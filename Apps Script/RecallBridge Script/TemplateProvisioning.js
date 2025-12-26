@@ -181,18 +181,6 @@ function ProvisionPracticeEngineFromLatestTemplate(practice_id, practice_display
   }
 }
 
-// Temporary wrapper for DKC (remove when not needed)
-function ProvisionDKC() {
-  return ProvisionPracticeEngineFromLatestTemplate(
-    "dkc",
-    "DKC",
-    DKC_WORK_FOLDER_ID,
-    DKC_UPLOAD_FOLDER_ID,
-    DKC_IMPORTS_FOLDER_ID,
-    "America/New_York"
-  );
-}
-
 function buildWebhookUrls_(practiceId) {
   const base = normalizeExecUrl_(PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_BASE_URL") || getBaseExecUrl_());
   const token = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_TOKEN") || "";

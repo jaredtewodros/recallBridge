@@ -19,6 +19,7 @@ function renderLinkMode(opts) {
   var touch = (opts.touch || "t1").trim().toLowerCase();
   var shortUrl = opts.short_url || "";
   var officePhone = opts.office_phone || "";
+  var practiceName = opts.practice_name || "your practice";
   var includeOptOut = opts.include_opt_out !== false;
 
   if (!shortUrl) throw new Error("short_url is required for link mode");
@@ -26,12 +27,12 @@ function renderLinkMode(opts) {
   var body;
   if (touch === "t2") {
     var lead = tag === "past_due" ? "following up on your overdue recall/cleaning." : "checking back about your hygiene/recall visit.";
-    body = "Hi " + name + ", this is Bethesda Dental Smiles, " + lead + " We still have openings this week. Book here: " + shortUrl + "\n\nQuestions? Call " + officePhone + ".";
+    body = "Hi " + name + ", this is " + practiceName + ", " + lead + " We still have openings this week. Book here: " + shortUrl + "\n\nQuestions? Call " + officePhone + ".";
   } else {
     if (tag === "past_due") {
-      body = "Hi " + name + ", this is Bethesda Dental Smiles. Your recall/cleaning is past due. Book here: " + shortUrl + "\n\nQuestions? Call " + officePhone + ".";
+      body = "Hi " + name + ", this is " + practiceName + ". Your recall/cleaning is past due. Book here: " + shortUrl + "\n\nQuestions? Call " + officePhone + ".";
     } else {
-      body = "Hi " + name + ", this is Bethesda Dental Smiles. You’re due for your next hygiene/recall visit. Book here: " + shortUrl + "\n\nQuestions? Call " + officePhone + ".";
+      body = "Hi " + name + ", this is " + practiceName + ". You’re due for your next hygiene/recall visit. Book here: " + shortUrl + "\n\nQuestions? Call " + officePhone + ".";
     }
   }
 
@@ -44,6 +45,7 @@ function renderManualMode(opts) {
   var name = greeting_(opts.first);
   var touch = (opts.touch || "t1").trim().toLowerCase();
   var officePhone = opts.office_phone || "";
+  var practiceName = opts.practice_name || "your practice";
   var includeOptOut = opts.include_opt_out !== false;
 
   var lead;
@@ -53,7 +55,7 @@ function renderManualMode(opts) {
     lead = tag === "past_due" ? "Your recall/cleaning is past due." : "You’re due for your next hygiene/recall visit.";
   }
 
-  var body = "Hi " + name + ", this is Bethesda Dental Smiles. " + lead + " Reply YES and we’ll call to schedule. Prefer a call now? Text CALL ME.\n\nQuestions? Call " + officePhone + ".";
+  var body = "Hi " + name + ", this is " + practiceName + ". " + lead + " Reply YES and we’ll call to schedule. Prefer a call now? Text CALL ME.\n\nQuestions? Call " + officePhone + ".";
   if (includeOptOut) body += OPT_OUT_FOOTER;
   return body;
 }

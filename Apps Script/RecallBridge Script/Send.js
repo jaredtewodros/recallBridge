@@ -126,7 +126,7 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
         logEvent(ss, EVENT_TYPES.RUN_SEND_FAIL, rid, practiceId, "Invalid phone, skipping send", { touch_id: h["touch_id"] !== undefined ? row[h["touch_id"]] : "", phone: rawTo });
         return;
       }
-      const body = defaultSmsBody_(touch, cfg);
+      const body = defaultSmsBody_(touch, cfg, to, practiceId);
       const statusCallback = cfg.status_callback_url || "";
       const payload = {
         To: to,
@@ -191,26 +191,47 @@ function getTwilioSecretsMap_(practiceId) {
   return entry;
 }
 
-function defaultSmsBody_(touchType, cfg) {
-  const officePhone = (cfg && cfg.office_phone) || "";
-  // Prefer link mode so recipients get the scheduling link; fall back to manual if renderer fails.
+function defaultSmsBody_(touchType, cfg, phoneE164, practiceId) {
+  const copy = getPracticeCopy_(practiceId, cfg);
+  const officePhone = copy.office_phone || (cfg && cfg.office_phone) || "";
+  const baseUrl = copy.booking_url || (cfg && cfg.booking_url) || "https://schedule.solutionreach.com/scheduling/subscriber/79395/scheduler";
+  const listTag = "past_due";
+  // Build full scheduler URL with list_tag + phone
+  const fullUrl = baseUrl + "?lt=" + encodeURIComponent(listTag) + (phoneE164 ? "&pn=" + encodeURIComponent(phoneE164) : "");
   try {
     return renderMessage({
       mode: "link",
-      list_tag: "past_due",
+      list_tag: listTag,
       first: "",
       office_phone: officePhone,
       touch: touchType || "T1",
-      include_opt_out: true
+      include_opt_out: true,
+      short_url: fullUrl,
+      practice_name: copy.practice_name
     });
   } catch (_e) {
     return renderMessage({
       mode: "manual",
-      list_tag: "past_due",
+      list_tag: listTag,
       first: "",
       office_phone: officePhone,
       touch: touchType || "T1",
-      include_opt_out: true
+      include_opt_out: true,
+      practice_name: copy.practice_name
     });
   }
+}
+
+// Practice-specific copy: read from Script Property RB_PRACTICE_COPY_JSON, keyed by practice_id
+// Shape: {"bethesda_dental_smiles":{"practice_name":"Bethesda Dental Smiles","booking_url":"https://...","office_phone":"301-656-7872"}, ...}
+function getPracticeCopy_(practiceId, cfg) {
+  var map = {};
+  var raw = PropertiesService.getScriptProperties().getProperty("RB_PRACTICE_COPY_JSON") || "{}";
+  try { map = JSON.parse(raw); } catch (_e) { map = {}; }
+  var entry = map[practiceId] || {};
+  return {
+    practice_name: entry.practice_name || (cfg && cfg.practice_display_name) || "your practice",
+    booking_url: entry.booking_url || (cfg && cfg.booking_url) || "",
+    office_phone: entry.office_phone || (cfg && cfg.office_phone) || ""
+  };
 }

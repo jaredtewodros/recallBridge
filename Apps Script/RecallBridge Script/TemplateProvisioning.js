@@ -102,7 +102,7 @@ function CreateVersionedTemplateV1() {
       if (cfgValues[i][0] === "active_campaign_id") cfg.getRange(i + 1, 2).setValue("");
       if (cfgValues[i][0] === "touches_dry_run_default") cfg.getRange(i + 1, 2).setValue(true);
       if (cfgValues[i][0] === "send_rate_limit_per_minute") cfg.getRange(i + 1, 2).setValue(60);
-      if (cfgValues[i][0] === "webhook_base_exec_url") cfg.getRange(i + 1, 2).setValue(ScriptApp.getService().getUrl() || "");
+      if (cfgValues[i][0] === "webhook_base_exec_url") cfg.getRange(i + 1, 2).setValue(normalizeExecUrl_(getBaseExecUrl_()));
       if (cfgValues[i][0] === "status_callback_url") cfg.getRange(i + 1, 2).setValue("");
       if (cfgValues[i][0] === "click_callback_url") cfg.getRange(i + 1, 2).setValue("");
       if (cfgValues[i][0] === "inbound_webhook_url") cfg.getRange(i + 1, 2).setValue("");
@@ -194,7 +194,7 @@ function ProvisionDKC() {
 }
 
 function buildWebhookUrls_(practiceId) {
-  const base = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_BASE_URL") || ScriptApp.getService().getUrl() || "";
+  const base = normalizeExecUrl_(PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_BASE_URL") || getBaseExecUrl_());
   const token = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_TOKEN") || "";
   const qs = function (route) {
     return base ? (base + "?route=" + route + "&practice_id=" + practiceId + "&token=" + token) : "";
@@ -216,4 +216,13 @@ function updatePracticeRegistry_(practiceId, sheetId) {
   } catch (e) {
     Logger.log({ action: "updatePracticeRegistry_", error: String(e) });
   }
+}
+
+function getBaseExecUrl_() {
+  return ScriptApp.getService().getUrl() || "";
+}
+
+function normalizeExecUrl_(url) {
+  if (!url) return "";
+  return url.replace(/\/dev$/, "/exec");
 }

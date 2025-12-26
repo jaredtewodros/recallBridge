@@ -6,11 +6,10 @@ function doPost(e) {
   const practiceId = qs.practice_id || "";
   const token = qs.token || "";
   const expectedToken = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_TOKEN") || "";
-  const sigToken = PropertiesService.getScriptProperties().getProperty("RB_TWILIO_AUTH_TOKEN") || PropertiesService.getScriptProperties().getProperty("TWILIO_AUTH_TOKEN") || "";
 
   if (!route || !practiceId) return ContentService.createTextOutput("missing route/practice_id").setMimeType(ContentService.MimeType.TEXT);
   if (!expectedToken || token !== expectedToken) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
-  if (!validateTwilioSignature_(e, sigToken)) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
+  if (!validateTwilioSignature_(e, practiceId)) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
 
   const registryJson = PropertiesService.getScriptProperties().getProperty("RB_PRACTICE_REGISTRY_JSON") || "{}";
   const registry = safeJsonParse_(registryJson, {});
@@ -52,22 +51,44 @@ function safeJsonParse_(txt, fallback) {
   try { return JSON.parse(txt); } catch (_e) { return fallback; }
 }
 
-// Best-effort Twilio signature validation. If signature header is missing or auth token not set, validation is skipped.
-function validateTwilioSignature_(e, authToken) {
+// Best-effort Twilio signature validation. If signature header or auth token missing, validation is skipped.
+function validateTwilioSignature_(e, practiceId) {
+  var authToken = "";
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty("RB_TWILIO_CREDS_JSON") || "{}";
+    var map = JSON.parse(raw);
+    var entry = map[practiceId];
+    if (entry && entry.authToken) authToken = entry.authToken;
+  } catch (_err) { authToken = ""; }
   if (!authToken) return true;
   const headers = (e && e.headers) || {};
   const sigHeader = headers["X-Twilio-Signature"] || headers["x-twilio-signature"] || (e && e.parameter && (e.parameter["X-Twilio-Signature"] || e.parameter["x-twilio-signature"])) || "";
   if (!sigHeader) return true; // cannot validate without signature
 
-  // Use configured base URL if provided to avoid domain mismatch; fallback to ScriptApp service URL
-  const baseUrl = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_BASE_URL") || ScriptApp.getService().getUrl();
-  const params = e && e.parameter ? e.parameter : {};
-  const keys = Object.keys(params || {}).filter(function (k) { return k.toLowerCase() !== "x-twilio-signature"; }).sort();
-  const concat = keys.map(function (k) { return k + String(params[k]); }).join("");
-  const data = baseUrl + concat;
-  const digest = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, data, authToken);
-  const computed = Utilities.base64Encode(digest);
-  return computed === sigHeader;
+  // Candidate base URLs: configured override, service URL, and exec-normalized version
+  var baseUrlProp = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_BASE_URL") || "";
+  var serviceUrl = ScriptApp.getService().getUrl();
+  var execUrl = serviceUrl ? serviceUrl.replace(/\/dev$/, "/exec") : "";
+  var candidates = [];
+  [baseUrlProp, serviceUrl, execUrl].forEach(function (u) {
+    if (u && candidates.indexOf(u) === -1) candidates.push(u);
+  });
+
+  // Build signature data for form vs JSON
+  var isJson = e && e.postData && (e.postData.type || "").toLowerCase().indexOf("application/json") !== -1;
+  var body = e && e.postData ? (e.postData.contents || "") : "";
+  var params = e && e.parameter ? e.parameter : {};
+  var keys = Object.keys(params || {}).filter(function (k) { return k.toLowerCase() !== "x-twilio-signature"; }).sort();
+  var concatParams = keys.map(function (k) { return k + String(params[k]); }).join("");
+
+  for (var i = 0; i < candidates.length; i++) {
+    var baseUrl = candidates[i];
+    var data = isJson ? (baseUrl + body) : (baseUrl + concatParams);
+    var digest = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, data, authToken);
+    var computed = Utilities.base64Encode(digest);
+    if (computed === sigHeader) return true;
+  }
+  return false;
 }
 
 // ===== Twilio Handlers =====

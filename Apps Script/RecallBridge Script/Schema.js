@@ -22,7 +22,11 @@ const CONFIG_KEYS = [
   "invariant_queue_mode",
   "active_campaign_id",
   "touches_dry_run_default",
-  "send_rate_limit_per_minute"
+  "send_rate_limit_per_minute",
+  "webhook_base_exec_url",
+  "status_callback_url",
+  "click_callback_url",
+  "inbound_webhook_url"
 ];
 
 const PATIENT_HEADERS = [
@@ -46,6 +50,8 @@ const PATIENT_HEADERS = [
   "recall_last_appointment_at",
   "primary_provider_name",
   "do_not_text",
+  "do_not_text_source",
+  "do_not_text_at",
   "complaint_flag",
   "payer_name_primary_raw",
   "remaining_amount_ytd_primary_raw",
@@ -83,11 +89,24 @@ const TOUCHES_HEADERS = [
   "ineligible_reason",
   "planned_at",
   "send_status",
+  "send_state",
+  "send_attempt_id",
   "dry_run",
   "msg_sid",
+  "twilio_message_status",
   "sent_at",
   "error_code",
   "error_message",
+  "delivered_at",
+  "undelivered_at",
+  "failed_at",
+  "click_count",
+  "preview_count",
+  "first_clicked_at",
+  "last_clicked_at",
+  "stop_at",
+  "reply_at",
+  "last_inbound_body",
   "created_at",
   "updated_at"
 ];
@@ -99,7 +118,11 @@ const EVENT_HEADERS = [
   "occurred_at",
   "practice_id",
   "notes",
-  "payload_json"
+  "payload_json",
+  "dedupe_key",
+  "touch_id",
+  "twilio_message_sid",
+  "error"
 ];
 
 const REQUIRED_SHEETS = ["00_README", "10_Config", "20_Import_Raw", "30_Patients", "50_Queue", "60_Touches", "70_EventLog"];
@@ -153,6 +176,12 @@ const EVENT_TYPES = {
   RUN_SEND_DRY_RUN_START: "RUN_SEND_DRY_RUN_START",
   RUN_SEND_DRY_RUN_PASS: "RUN_SEND_DRY_RUN_PASS",
   RUN_SEND_DRY_RUN_FAIL: "RUN_SEND_DRY_RUN_FAIL",
+  RUN_SEND_START: "RUN_SEND_START",
+  RUN_SEND_PASS: "RUN_SEND_PASS",
+  RUN_SEND_FAIL: "RUN_SEND_FAIL",
+  TWILIO_STATUS: "twilio.status_callback",
+  TWILIO_CLICK: "twilio.click_event",
+  TWILIO_INBOUND: "twilio.inbound_message",
   RUN_SUMMARY: "RUN_SUMMARY",
   RUN_INVARIANTS_FAIL: "RUN_INVARIANTS_FAIL",
   RUN_INVARIANTS_PASS: "RUN_INVARIANTS_PASS",

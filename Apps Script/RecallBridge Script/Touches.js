@@ -75,6 +75,7 @@ function CreateTouchesFromQueue(practiceSheetId, touchType, campaignId, dryRun) 
         tRow[tMap["eligible"]] = eligible;
         tRow[tMap["ineligible_reason"]] = reason;
         tRow[tMap["planned_at"]] = now;
+        if (tMap["send_state"] !== undefined) tRow[tMap["send_state"]] = status;
         tRow[tMap["updated_at"]] = now;
         // Only adjust send_status if currently READY/SKIPPED
         if (curStatus === "READY" || curStatus === "SKIPPED" || !curStatus) {
@@ -94,11 +95,24 @@ function CreateTouchesFromQueue(practiceSheetId, touchType, campaignId, dryRun) 
         newRow[tMap["ineligible_reason"]] = reason;
         newRow[tMap["planned_at"]] = now;
         newRow[tMap["send_status"]] = status;
+        if (tMap["send_state"] !== undefined) newRow[tMap["send_state"]] = status;
+        if (tMap["send_attempt_id"] !== undefined) newRow[tMap["send_attempt_id"]] = "";
         newRow[tMap["dry_run"]] = dryFlag;
         newRow[tMap["msg_sid"]] = "";
+        if (tMap["twilio_message_status"] !== undefined) newRow[tMap["twilio_message_status"]] = "";
         newRow[tMap["sent_at"]] = "";
-        newRow[tMap["error_code"]] = "";
-        newRow[tMap["error_message"]] = "";
+        if (tMap["error_code"] !== undefined) newRow[tMap["error_code"]] = "";
+        if (tMap["error_message"] !== undefined) newRow[tMap["error_message"]] = "";
+        if (tMap["delivered_at"] !== undefined) newRow[tMap["delivered_at"]] = "";
+        if (tMap["undelivered_at"] !== undefined) newRow[tMap["undelivered_at"]] = "";
+        if (tMap["failed_at"] !== undefined) newRow[tMap["failed_at"]] = "";
+        if (tMap["click_count"] !== undefined) newRow[tMap["click_count"]] = 0;
+        if (tMap["preview_count"] !== undefined) newRow[tMap["preview_count"]] = 0;
+        if (tMap["first_clicked_at"] !== undefined) newRow[tMap["first_clicked_at"]] = "";
+        if (tMap["last_clicked_at"] !== undefined) newRow[tMap["last_clicked_at"]] = "";
+        if (tMap["stop_at"] !== undefined) newRow[tMap["stop_at"]] = "";
+        if (tMap["reply_at"] !== undefined) newRow[tMap["reply_at"]] = "";
+        if (tMap["last_inbound_body"] !== undefined) newRow[tMap["last_inbound_body"]] = "";
         newRow[tMap["created_at"]] = now;
         newRow[tMap["updated_at"]] = now;
         newRows.push(newRow);
@@ -138,72 +152,6 @@ function CreateTouchesFromQueue(practiceSheetId, touchType, campaignId, dryRun) 
     return payload;
   } catch (e) {
     logEvent(ss, EVENT_TYPES.RUN_CREATE_TOUCHES_FAIL, rid, practiceId, "CreateTouches error: " + e.message, { error: String(e), stack: e && e.stack ? e.stack : "" });
-    throw e;
-  }
-}
-
-function SendReadyTouches(practiceSheetId, touchType, dryRun) {
-  const rid = runId();
-  const ss = SpreadsheetApp.openById(practiceSheetId);
-  const cfg = getConfig(ss);
-  const practiceId = cfg.practice_id || "";
-  const campaign = cfg.active_campaign_id || "";
-  const touch = touchType || "T1";
-  const dryFlag = typeof dryRun === "boolean" ? dryRun : true;
-  const ks = cfg.kill_switch || "OFF";
-
-  logEvent(ss, EVENT_TYPES.RUN_SEND_DRY_RUN_START, rid, practiceId, "SendReady " + touch + " " + campaign, {});
-  if (!dryFlag) {
-    const msg = "LIVE sending not implemented in this version.";
-    logEvent(ss, EVENT_TYPES.RUN_SEND_DRY_RUN_FAIL, rid, practiceId, msg, {});
-    throw new Error(msg);
-  }
-  if (ks === "ON") {
-    const msg = "Kill switch ON; refusing send.";
-    logEvent(ss, EVENT_TYPES.RUN_SEND_DRY_RUN_FAIL, rid, practiceId, msg, {});
-    throw new Error(msg);
-  }
-  if (!campaign) {
-    const msg = "Set active_campaign_id in Config before sending.";
-    logEvent(ss, EVENT_TYPES.RUN_SEND_DRY_RUN_FAIL, rid, practiceId, msg, {});
-    throw new Error(msg);
-  }
-
-  try {
-    const tSh = getSheetByName(ss, "60_Touches");
-    const data = tSh.getDataRange().getValues();
-    if (data.length < 2) {
-      logEvent(ss, EVENT_TYPES.RUN_SEND_DRY_RUN_PASS, rid, practiceId, "No touches to send", { ready_count: 0, would_send_count: 0, campaign_id: campaign, touch_type: touch });
-      return { ready_count: 0, would_send_count: 0 };
-    }
-    const header = data[0];
-    const hmap = headerMap(header);
-    const now = new Date().toISOString();
-    let readyCount = 0;
-    let wouldSend = 0;
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      if ((row[hmap["touch_type"]] || "") !== touch) continue;
-      if ((row[hmap["campaign_id"]] || "") !== campaign) continue;
-      const status = row[hmap["send_status"]] || "";
-      if (status === "READY") {
-        readyCount++;
-        row[hmap["send_status"]] = "WOULD_SEND";
-        row[hmap["sent_at"]] = now;
-        row[hmap["updated_at"]] = now;
-        row[hmap["dry_run"]] = true;
-        data[i] = row;
-        wouldSend++;
-      }
-    }
-    if (wouldSend > 0) {
-      tSh.getRange(1,1,data.length, header.length).setValues(data);
-    }
-    const payload = { ready_count: readyCount, would_send_count: wouldSend, campaign_id: campaign, touch_type: touch };
-    logEvent(ss, EVENT_TYPES.RUN_SEND_DRY_RUN_PASS, rid, practiceId, "SendReady DRY_RUN", payload);
-    return payload;
-  } catch (e) {
-    logEvent(ss, EVENT_TYPES.RUN_SEND_DRY_RUN_FAIL, rid, practiceId, "SendReady error: " + e.message, { error: String(e), stack: e && e.stack ? e.stack : "" });
     throw e;
   }
 }

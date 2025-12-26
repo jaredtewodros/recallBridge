@@ -101,6 +101,10 @@ function CreateVersionedTemplateV1() {
       if (cfgValues[i][0] === "active_campaign_id") cfg.getRange(i + 1, 2).setValue("");
       if (cfgValues[i][0] === "touches_dry_run_default") cfg.getRange(i + 1, 2).setValue(true);
       if (cfgValues[i][0] === "send_rate_limit_per_minute") cfg.getRange(i + 1, 2).setValue(60);
+      if (cfgValues[i][0] === "webhook_base_exec_url") cfg.getRange(i + 1, 2).setValue(ScriptApp.getService().getUrl() || "");
+      if (cfgValues[i][0] === "status_callback_url") cfg.getRange(i + 1, 2).setValue("");
+      if (cfgValues[i][0] === "click_callback_url") cfg.getRange(i + 1, 2).setValue("");
+      if (cfgValues[i][0] === "inbound_webhook_url") cfg.getRange(i + 1, 2).setValue("");
     }
 
     // Move template into Templates folder via DriveApp (shared-drive safe)
@@ -139,6 +143,8 @@ function ProvisionPracticeEngineFromLatestTemplate(practice_id, practice_display
     const copy = templateFile.makeCopy(copyName, workFolder);
 
     const ss = SpreadsheetApp.openById(copy.getId());
+    // compute webhook URLs for this practice
+    const webhook = buildWebhookUrls_(practice_id);
     setConfig(ss, {
       practice_id: practice_id,
       practice_display_name: practice_display_name,
@@ -157,9 +163,14 @@ function ProvisionPracticeEngineFromLatestTemplate(practice_id, practice_display
       active_campaign_id: "",
       touches_dry_run_default: true,
       send_rate_limit_per_minute: 60,
+      webhook_base_exec_url: webhook.base,
+      status_callback_url: webhook.status,
+      click_callback_url: webhook.click,
+      inbound_webhook_url: webhook.inbound,
       mode: "DRY_RUN",
       kill_switch: "OFF"
     });
+    updatePracticeRegistry_(practice_id, copy.getId());
     logEvent(ss, EVENT_TYPES.PROVISION_PASS, rid, practice_id, "Provisioned engine", { engineId: copy.getId(), url: ss.getUrl() });
     return ss.getUrl();
   } catch (e) {
@@ -179,4 +190,29 @@ function ProvisionDKC() {
     DKC_IMPORTS_FOLDER_ID,
     "America/New_York"
   );
+}
+
+function buildWebhookUrls_(practiceId) {
+  const base = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_BASE_URL") || ScriptApp.getService().getUrl() || "";
+  const token = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_TOKEN") || "";
+  const qs = function (route) {
+    return base ? (base + "?route=" + route + "&practice_id=" + practiceId + "&token=" + token) : "";
+  };
+  return {
+    base: base,
+    status: qs("twilio_status"),
+    click: qs("twilio_click"),
+    inbound: qs("twilio_inbound")
+  };
+}
+
+function updatePracticeRegistry_(practiceId, sheetId) {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty("RB_PRACTICE_REGISTRY_JSON") || "{}";
+    const obj = JSON.parse(raw);
+    obj[practiceId] = sheetId;
+    PropertiesService.getScriptProperties().setProperty("RB_PRACTICE_REGISTRY_JSON", JSON.stringify(obj));
+  } catch (e) {
+    Logger.log({ action: "updatePracticeRegistry_", error: String(e) });
+  }
 }

@@ -193,13 +193,24 @@ function getTwilioSecretsMap_(practiceId) {
 
 function defaultSmsBody_(touchType, cfg) {
   const officePhone = (cfg && cfg.office_phone) || "";
-  // For now use manual mode copy without a link; extend later if short_url is available.
-  return renderMessage({
-    mode: "manual",
-    list_tag: "past_due",
-    first: "",
-    office_phone: officePhone,
-    touch: touchType || "T1",
-    include_opt_out: true
-  });
+  // Prefer link mode so recipients get the scheduling link; fall back to manual if renderer fails.
+  try {
+    return renderMessage({
+      mode: "link",
+      list_tag: "past_due",
+      first: "",
+      office_phone: officePhone,
+      touch: touchType || "T1",
+      include_opt_out: true
+    });
+  } catch (_e) {
+    return renderMessage({
+      mode: "manual",
+      list_tag: "past_due",
+      first: "",
+      office_phone: officePhone,
+      touch: touchType || "T1",
+      include_opt_out: true
+    });
+  }
 }

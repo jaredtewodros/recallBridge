@@ -112,7 +112,20 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
 
       // LIVE: send via Twilio
       const secrets = getTwilioSecretsMap_(practiceId);
-      const to = row[h["phone_e164"]];
+      const rawTo = row[h["phone_e164"]];
+      const to = (typeof normalizePhone === "function" ? normalizePhone(rawTo) : rawTo);
+      // Validate E.164 before calling Twilio; if invalid, mark ERROR without sending.
+      if (!to || !/^\+\d{10,15}$/.test(to)) {
+        if (h["send_state"] !== undefined) row[h["send_state"]] = ERROR;
+        if (h["send_status"] !== undefined) row[h["send_status"]] = "ERROR";
+        if (h["error_message"] !== undefined) row[h["error_message"]] = "invalid_phone_e164";
+        if (h["error_code"] !== undefined) row[h["error_code"]] = "invalid_phone_e164";
+        if (h["updated_at"] !== undefined) row[h["updated_at"]] = now2;
+        updatedRows.push(row);
+        updatedIdx.push(c.idx);
+        logEvent(ss, EVENT_TYPES.RUN_SEND_FAIL, rid, practiceId, "Invalid phone, skipping send", { touch_id: h["touch_id"] !== undefined ? row[h["touch_id"]] : "", phone: rawTo });
+        return;
+      }
       const body = defaultSmsBody_(touch, cfg);
       const statusCallback = cfg.status_callback_url || "";
       const payload = {

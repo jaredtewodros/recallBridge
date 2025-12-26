@@ -131,7 +131,8 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
       const payload = {
         To: to,
         MessagingServiceSid: secrets.messagingServiceSid,
-        Body: body
+        Body: body,
+        ShortenUrls: true
       };
       if (statusCallback) payload.StatusCallback = statusCallback;
       const resp = UrlFetchApp.fetch("https://api.twilio.com/2010-04-01/Accounts/" + secrets.accountSid + "/Messages.json", {

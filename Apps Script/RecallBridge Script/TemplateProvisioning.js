@@ -73,13 +73,14 @@ function CreateVersionedTemplateV1() {
     ev.setFrozenRows(1);
     ev.getRange(1,1,1,ev.getLastColumn()).setFontWeight("bold");
 
-    // Protect header rows; only data rows remain editable
+    // Protect header rows; only data rows remain editable. Owners can still override, but will see warnings.
     [cfg, raw, p, q, ev, t].forEach(function (sh) {
       const prot = sh.protect().setDescription(sh.getName() + " header");
       const unprot = sh.getRange(2, 1, sh.getMaxRows() - 1, sh.getMaxColumns());
       prot.setUnprotectedRanges([unprot]);
       prot.removeEditors(prot.getEditors());
       if (prot.canDomainEdit()) prot.setDomainEdit(false);
+      prot.setWarningOnly(true); // warn even owners
     });
 
     // Data validation for mode/kill_switch

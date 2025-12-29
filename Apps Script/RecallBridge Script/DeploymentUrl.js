@@ -6,9 +6,17 @@ var WEBAPP_EXEC_CACHE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 function getCurrentWebAppExecUrl_() {
   var cached = getCachedWebAppExecUrl_();
   if (cached) return cached;
-  var deployments = fetchDeployments_();
-  var candidate = selectBestWebAppDeploymentCandidate_(deployments);
-  var url = candidate && candidate.url ? candidate.url : "";
+  var url = "";
+  try {
+    var deployments = fetchDeployments_();
+    var candidate = selectBestWebAppDeploymentCandidate_(deployments);
+    url = candidate && candidate.url ? candidate.url : "";
+  } catch (err) {
+    // Fallback to the service URL if API call is not authorized; log for visibility.
+    try { Logger.log({ deployments_list_error: String(err) }); } catch (_e) {}
+    var svc = ScriptApp.getService().getUrl() || "";
+    if (svc) url = svc.replace(/\/dev$/, "/exec");
+  }
   if (url) CacheService.getScriptCache().put(WEBAPP_EXEC_CACHE_KEY, url, WEBAPP_EXEC_CACHE_TTL_SECONDS);
   return url;
 }

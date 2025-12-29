@@ -1,5 +1,12 @@
 // WebApp.js - single webhook entrypoint (Twilio status, clicks, inbound)
 
+function doGet(e) {
+  // minimal doGet healthcheck to keep endpoint browser-testable 
+  return ContentService
+    .createTextOutput("ok")
+    .setMimeType(ContentService.MimeType.TEXT);
+}
+
 function doPost(e) {
   const qs = e && e.parameter ? e.parameter : {};
   const route = (qs.route || "").toLowerCase();
@@ -7,7 +14,13 @@ function doPost(e) {
   const token = qs.token || "";
   const expectedToken = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_TOKEN") || "";
 
-  if (!route || !practiceId) return ContentService.createTextOutput("missing route/practice_id").setMimeType(ContentService.MimeType.TEXT);
+  if (!route) return ContentService.createTextOutput("missing route").setMimeType(ContentService.MimeType.TEXT);
+  if (route === "health") {
+    if (!expectedToken || token !== expectedToken) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
+    return ContentService.createTextOutput("ok").setMimeType(ContentService.MimeType.TEXT);
+  }
+
+  if (!practiceId) return ContentService.createTextOutput("missing practice_id").setMimeType(ContentService.MimeType.TEXT);
   if (!expectedToken || token !== expectedToken) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
   if (!validateTwilioSignature_(e, practiceId)) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
 
@@ -66,11 +79,12 @@ function validateTwilioSignature_(e, practiceId) {
   if (!sigHeader) return true; // cannot validate without signature
 
   // Candidate base URLs: configured override, service URL, and exec-normalized version
-  var baseUrlProp = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_BASE_URL") || "";
+  var cachedExec = "";
+  try { cachedExec = getCachedWebAppExecUrl_(); } catch (_e) { cachedExec = ""; }
   var serviceUrl = ScriptApp.getService().getUrl();
   var execUrl = serviceUrl ? serviceUrl.replace(/\/dev$/, "/exec") : "";
   var candidates = [];
-  [baseUrlProp, serviceUrl, execUrl].forEach(function (u) {
+  [cachedExec, serviceUrl, execUrl].forEach(function (u) {
     if (u && candidates.indexOf(u) === -1) candidates.push(u);
   });
 
@@ -80,10 +94,16 @@ function validateTwilioSignature_(e, practiceId) {
   var params = e && e.parameter ? e.parameter : {};
   var keys = Object.keys(params || {}).filter(function (k) { return k.toLowerCase() !== "x-twilio-signature"; }).sort();
   var concatParams = keys.map(function (k) { return k + String(params[k]); }).join("");
+  // Reconstruct query string for known URL params (route, practice_id, token)
+  var queryKeys = ["route", "practice_id", "token"].filter(function (k) { return params.hasOwnProperty(k); });
+  var queryString = queryKeys.map(function (k) {
+    return k + "=" + encodeURIComponent(params[k]);
+  }).join("&");
 
   for (var i = 0; i < candidates.length; i++) {
     var baseUrl = candidates[i];
-    var data = isJson ? (baseUrl + body) : (baseUrl + concatParams);
+    var fullUrl = queryString ? (baseUrl + "?" + queryString) : baseUrl;
+    var data = isJson ? (fullUrl + body) : (fullUrl + concatParams);
     var digest = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, data, authToken);
     var computed = Utilities.base64Encode(digest);
     if (computed === sigHeader) return true;

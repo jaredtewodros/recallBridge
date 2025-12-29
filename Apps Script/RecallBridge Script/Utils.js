@@ -46,6 +46,20 @@ function normalizePhone(raw) {
   return null;
 }
 
+// Compute the current Web App base URL (cached discovery; falls back to service URL normalized to /exec).
+function currentExecBaseUrl_() {
+  try {
+    const cached = typeof getCachedWebAppExecUrl_ === "function" ? getCachedWebAppExecUrl_() : "";
+    if (cached) return cached.replace(/\/dev$/, "/exec");
+    const discovered = typeof getCurrentWebAppExecUrl_ === "function" ? getCurrentWebAppExecUrl_() : "";
+    if (discovered) return discovered.replace(/\/dev$/, "/exec");
+  } catch (_e) {
+    // Fall back to service URL if discovery/cache unavailable.
+  }
+  const svc = ScriptApp.getService().getUrl() || "";
+  return svc ? svc.replace(/\/dev$/, "/exec") : "";
+}
+
 function computeRecallStatus(dueDateStr, windowDays) {
   if (!dueDateStr) return "UNKNOWN";
   const d = new Date(dueDateStr);

@@ -109,6 +109,11 @@ function invalidateWebAppExecUrlCache_() {
   CacheService.getScriptCache().remove(WEBAPP_EXEC_CACHE_KEY);
 }
 
+// Console-friendly alias (Apps Script console cannot run names ending with underscore easily)
+function invalidateWebAppExecUrlCache() {
+  return invalidateWebAppExecUrlCache_();
+}
+
 // ===== Admin / tests =====
 
 function rbDebug_LogExecUrl() {

@@ -252,5 +252,22 @@ function SyncWebhookUrlsAll() {
       results[pid] = { error: String(e) };
     }
   });
+  // Also refresh the template base exec URL for newly provisioned engines to inherit.
+  try {
+    results.template = SyncWebhookBaseForTemplate();
+  } catch (e) {
+    results.template = { error: String(e) };
+  }
   return results;
+}
+
+// Update the template's 10_Config webhook_base_exec_url to the current exec base (does not set practice-specific URLs).
+function SyncWebhookBaseForTemplate() {
+  const templateId = PropertiesService.getScriptProperties().getProperty(SCRIPT_PROP_LATEST_TEMPLATE_ID);
+  if (!templateId) throw new Error("LATEST_TEMPLATE_ID missing; run CreateVersionedTemplateV1 first.");
+  const ss = SpreadsheetApp.openById(templateId);
+  const base = normalizeExecUrl_(currentExecBaseUrl_());
+  if (!base) throw new Error("Unable to resolve current exec URL for template webhook_base_exec_url");
+  setConfig(ss, { webhook_base_exec_url: base });
+  return { template_id: templateId, webhook_base_exec_url: base };
 }

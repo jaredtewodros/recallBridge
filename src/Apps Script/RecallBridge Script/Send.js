@@ -53,6 +53,9 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
       if ((row[h["campaign_id"]] || "") !== campaign) continue;
       const state = h["send_state"] !== undefined ? (row[h["send_state"]] || "") : (h["send_status"] !== undefined ? (row[h["send_status"]] || "") : "");
       const sid = h["msg_sid"] !== undefined ? row[h["msg_sid"]] : "";
+      // Safety: never claim rows that already recorded STOP/opt-out
+      if (h["stop_at"] !== undefined && row[h["stop_at"]]) continue;
+      if (h["do_not_text"] !== undefined && String(row[h["do_not_text"]]).toUpperCase() === "TRUE") continue;
 
       // Stuck SENDING guard: if SENDING with no SID and older than 30 min, mark ERROR and skip
       if (state === SENDING && !sid) {

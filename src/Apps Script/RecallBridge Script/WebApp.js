@@ -56,9 +56,8 @@ function doPost(e) {
       lock.releaseLock();
     }
   } else {
-    // Lock failed; signal busy so Twilio retries (or at least we don't corrupt state)
-    // Ideally throw to trigger 500, but text output is safe for now
-    return ContentService.createTextOutput("busy").setMimeType(ContentService.MimeType.TEXT);
+    // Lock failed; throw so Twilio sees a 500 and retries instead of dropping the event
+    throw new Error("Lock timeout: Server busy, please retry.");
   }
 
   return ContentService.createTextOutput("ok").setMimeType(ContentService.MimeType.TEXT);
@@ -259,7 +258,7 @@ function handleTwilioInbound_(ss, practiceId, payload) {
     const tData = tSh.getDataRange().getValues();
     if (tData.length >= 2) {
       const h = headerMap(tData[0]);
-      for (let i = 1; i < tData.length; i++) {
+      for (let i = tData.length - 1; i >= 1; i--) {
         const row = tData[i];
         if ((row[h["phone_e164"]] || "") !== phone) continue;
         if (isStop && h["stop_at"] !== undefined && !row[h["stop_at"]]) row[h["stop_at"]] = new Date().toISOString();

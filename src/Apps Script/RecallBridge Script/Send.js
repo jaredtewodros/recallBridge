@@ -236,9 +236,16 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
         logEvent(ss, EVENT_TYPES.RUN_SEND_FAIL, rid, practiceId, "Twilio send failed", { touch_id: h["touch_id"] !== undefined ? row[h["touch_id"]] : "", response: resp.getContentText(), code: code });
       }
     });
-    // Write back updated rows
+    // Write back updated rows with read-merge-write to avoid clobbering concurrent inbound updates
+    const senderOwnedCols = ["msg_sid", "send_state", "send_status", "sent_at", "dry_run", "error_code", "error_message", "updated_at", "send_attempt_id"];
     updatedIdx.forEach(function (idx, n) {
-      tSh.getRange(idx + 1, 1, 1, header.length).setValues([updatedRows[n]]);
+      const liveRow = tSh.getRange(idx + 1, 1, 1, header.length).getValues()[0];
+      const pendingRow = updatedRows[n];
+      senderOwnedCols.forEach(function (col) {
+        const colIdx = h[col];
+        if (colIdx !== undefined) liveRow[colIdx] = pendingRow[colIdx];
+      });
+      tSh.getRange(idx + 1, 1, 1, header.length).setValues([liveRow]);
     });
 
     logEvent(ss, EVENT_TYPES.RUN_SEND_PASS, rid, practiceId, "SendReady DRY_RUN", { ready_count: claimed.length, sent_count: sentCount, campaign_id: campaign, touch_type: touch });

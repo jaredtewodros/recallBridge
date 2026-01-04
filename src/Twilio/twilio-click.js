@@ -1,6 +1,6 @@
 // Path: /twilio-click
 // Runtime: Node 18
-// Purpose: Forward click webhook to GAS /exec via proxy header (no proxy-side signature validation).
+// Purpose: Forward click webhook to GAS /exec via proxy header (retry on GAS 5xx only).
 
 exports.handler = async function (context, event, callback) {
   console.log("Click Proxy Hit", {
@@ -16,7 +16,8 @@ exports.handler = async function (context, event, callback) {
 
   if (!forwardUrl || !proxyToken) {
     console.error("Misconfigured: Missing GAS_EXEC_URL or RB_PROXY_TOKEN");
-    return callback(null, plainResponse(500, "misconfigured"));
+    // Do not retry config errors.
+    return callback(null, plainResponse(200, "misconfigured_no_retry"));
   }
 
   const payload = new URLSearchParams();
@@ -31,10 +32,16 @@ exports.handler = async function (context, event, callback) {
     const res = await fetch(forwardUrl, { method: "POST", headers, body: payload.toString() });
     const body = await res.text();
     console.log("GAS Response:", { status: res.status, body });
+    var isGasErrorBody = body && (body.startsWith("<!DOCTYPE html>") || body.indexOf("<title>Error</title>") !== -1);
+    if (res.status >= 500 || isGasErrorBody) {
+      console.error("GAS error - Triggering Retry", { status: res.status, isGasErrorBody: isGasErrorBody });
+      return callback(null, plainResponse(500, "gas_server_error"));
+    }
     return callback(null, plainResponse(200, "ok"));
   } catch (err) {
     console.error("Forwarding failed", err);
-    return callback(null, plainResponse(200, "error_logged"));
+    // Network failure: allow retry.
+    return callback(null, plainResponse(500, "proxy_network_error"));
   }
 };
 

@@ -35,19 +35,32 @@ function doPost(e) {
   const ss = SpreadsheetApp.openById(sheetId);
   const payload = parseWebhookBody_(e);
 
-  try {
-    if (route === "twilio_status") {
-      handleTwilioStatus_(ss, practiceId, payload);
-    } else if (route === "twilio_click") {
-      handleTwilioClick_(ss, practiceId, payload);
-    } else if (route === "twilio_inbound") {
-      handleTwilioInbound_(ss, practiceId, payload);
-    } else {
-      return ContentService.createTextOutput("unknown route").setMimeType(ContentService.MimeType.TEXT);
+  const lock = LockService.getScriptLock();
+  // Wait up to 10s for other webhooks to finish writing
+  if (lock.tryLock(10000)) {
+    try {
+      try {
+        if (route === "twilio_status") {
+          handleTwilioStatus_(ss, practiceId, payload);
+        } else if (route === "twilio_click") {
+          handleTwilioClick_(ss, practiceId, payload);
+        } else if (route === "twilio_inbound") {
+          handleTwilioInbound_(ss, practiceId, payload);
+        } else {
+          return ContentService.createTextOutput("unknown route").setMimeType(ContentService.MimeType.TEXT);
+        }
+      } catch (err) {
+        try { logEvent(ss, EVENT_TYPES.ERROR, runId(), practiceId, "webhook error: " + err.message, payload, { error: String(err) }); } catch (_) {}
+      }
+    } finally {
+      lock.releaseLock();
     }
-  } catch (err) {
-    try { logEvent(ss, EVENT_TYPES.ERROR, runId(), practiceId, "webhook error: " + err.message, payload, { error: String(err) }); } catch (_) {}
+  } else {
+    // Lock failed; signal busy so Twilio retries (or at least we don't corrupt state)
+    // Ideally throw to trigger 500, but text output is safe for now
+    return ContentService.createTextOutput("busy").setMimeType(ContentService.MimeType.TEXT);
   }
+
   return ContentService.createTextOutput("ok").setMimeType(ContentService.MimeType.TEXT);
 }
 

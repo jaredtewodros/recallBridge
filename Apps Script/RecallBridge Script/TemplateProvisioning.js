@@ -102,7 +102,7 @@ function CreateVersionedTemplateV1() {
       if (cfgValues[i][0] === "active_campaign_id") cfg.getRange(i + 1, 2).setValue("");
       if (cfgValues[i][0] === "touches_dry_run_default") cfg.getRange(i + 1, 2).setValue(true);
       if (cfgValues[i][0] === "send_rate_limit_per_minute") cfg.getRange(i + 1, 2).setValue(60);
-      if (cfgValues[i][0] === "webhook_base_exec_url") cfg.getRange(i + 1, 2).setValue(normalizeExecUrl_(currentExecBaseUrl_()));
+      if (cfgValues[i][0] === "webhook_base_exec_url") cfg.getRange(i + 1, 2).setValue(normalizeExecUrl_(preferredStatusClickBase_()));
       if (cfgValues[i][0] === "status_callback_url") cfg.getRange(i + 1, 2).setValue("");
       if (cfgValues[i][0] === "click_callback_url") cfg.getRange(i + 1, 2).setValue("");
       if (cfgValues[i][0] === "inbound_webhook_url") cfg.getRange(i + 1, 2).setValue("");
@@ -182,17 +182,26 @@ function ProvisionPracticeEngineFromLatestTemplate(practice_id, practice_display
 }
 
 function buildWebhookUrls_(practiceId) {
-  const base = normalizeExecUrl_(currentExecBaseUrl_());
-  if (!base) throw new Error("Unable to resolve Web App exec URL for webhook generation.");
+  const statusClickBase = normalizeExecUrl_(preferredStatusClickBase_());
+  // If the proxy base looks like a Twilio Function hostname, append the function path.
+  const isProxy = !!statusClickBase;
+  const statusPath = isProxy ? "/twilio-status" : "";
+  const clickPath = isProxy ? "/twilio-click" : "";
+  const inboundPath = isProxy ? "/twilio-inbound" : "";
+  const execBase = normalizeExecUrl_(currentExecBaseUrl_());
+  if (!statusClickBase) throw new Error("Unable to resolve proxy base URL for webhook generation.");
   const token = PropertiesService.getScriptProperties().getProperty("RB_WEBHOOK_TOKEN") || "";
-  const qs = function (route) {
-    return base ? (base + "?route=" + route + "&practice_id=" + practiceId + "&token=" + token) : "";
+  const qs = function (route, path) {
+    const baseWithPath = statusClickBase + path;
+    return baseWithPath ? (baseWithPath + "?practice_id=" + practiceId + "&token=" + token) : "";
   };
   return {
-    base: base,
-    status: qs("twilio_status"),
-    click: qs("twilio_click"),
-    inbound: qs("twilio_inbound")
+    base: statusClickBase,
+    status: qs("twilio_status", statusPath),
+    click: qs("twilio_click", clickPath),
+    inbound: qs("twilio_inbound", inboundPath),
+    // Provide exec base for debugging/reference
+    exec_base: execBase
   };
 }
 
@@ -218,6 +227,13 @@ function getBaseExecUrl_() {
 function normalizeExecUrl_(url) {
   if (!url) return "";
   return url.replace(/\/dev$/, "/exec");
+}
+
+// Prefer Twilio Function proxy base if set; otherwise fall back to exec base (legacy direct).
+function preferredStatusClickBase_() {
+  const proxyBase = PropertiesService.getScriptProperties().getProperty("RB_TWILIO_PROXY_BASE_URL") || "";
+  if (proxyBase) return proxyBase.replace(/\/dev$/, "/exec");
+  return currentExecBaseUrl_();
 }
 
 // Recompute webhook URLs for a single practice_id from registry and update its Config.
@@ -266,7 +282,7 @@ function SyncWebhookBaseForTemplate() {
   const templateId = PropertiesService.getScriptProperties().getProperty(SCRIPT_PROP_LATEST_TEMPLATE_ID);
   if (!templateId) throw new Error("LATEST_TEMPLATE_ID missing; run CreateVersionedTemplateV1 first.");
   const ss = SpreadsheetApp.openById(templateId);
-  const base = normalizeExecUrl_(currentExecBaseUrl_());
+  const base = normalizeExecUrl_(preferredStatusClickBase_());
   if (!base) throw new Error("Unable to resolve current exec URL for template webhook_base_exec_url");
   setConfig(ss, { webhook_base_exec_url: base });
   return { template_id: templateId, webhook_base_exec_url: base };

@@ -22,7 +22,10 @@ function doPost(e) {
 
   if (!practiceId) return ContentService.createTextOutput("missing practice_id").setMimeType(ContentService.MimeType.TEXT);
   if (!expectedToken || token !== expectedToken) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
-  if (!validateTwilioSignature_(e, practiceId)) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
+
+  const proxyCheck = validateProxyToken_(e);
+  if (!proxyCheck.valid && proxyCheck.present) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
+  if (!proxyCheck.valid && !validateTwilioSignature_(e, practiceId)) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
 
   const registryJson = PropertiesService.getScriptProperties().getProperty("RB_PRACTICE_REGISTRY_JSON") || "{}";
   const registry = safeJsonParse_(registryJson, {});
@@ -62,6 +65,16 @@ function parseWebhookBody_(e) {
 
 function safeJsonParse_(txt, fallback) {
   try { return JSON.parse(txt); } catch (_e) { return fallback; }
+}
+
+// Validate proxy token header set by Twilio Function proxy; skips Twilio signature when present and correct.
+function validateProxyToken_(e) {
+  var expected = PropertiesService.getScriptProperties().getProperty("RB_PROXY_TOKEN") || "";
+  if (!expected) return { valid: false, present: false };
+  var headers = (e && e.headers) || {};
+  var token = headers["X-RB-Proxy-Token"] || headers["x-rb-proxy-token"] || "";
+  if (!token) return { valid: false, present: false };
+  return { valid: token === expected, present: true };
 }
 
 // Best-effort Twilio signature validation. If signature header or auth token missing, validation is skipped.

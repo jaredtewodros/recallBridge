@@ -226,6 +226,8 @@ function handleTwilioInbound_(ss, practiceId, payload) {
   const stopWords = ["STOP","STOPALL","UNSUBSCRIBE","CANCEL","END","QUIT"];
   const isStop = stopWords.indexOf(upper) !== -1;
   const isHelp = upper === "HELP";
+  const startWords = ["START","UNSTOP"];
+  const isStart = startWords.indexOf(upper) !== -1;
   const phone = normalizePhone(fromRaw) || fromRaw;
 
   let patientRowIdx = -1;
@@ -245,6 +247,13 @@ function handleTwilioInbound_(ss, practiceId, payload) {
     if (pMap["do_not_text_at"] !== undefined) row[pMap["do_not_text_at"]] = new Date().toISOString();
     row[pMap["updated_at"]] = new Date().toISOString();
     pSh.getRange(patientRowIdx + 1, 1, 1, pHeader.length).setValues([row]);
+  } else if (patientRowIdx > 0 && isStart) {
+    const row = pData[patientRowIdx];
+    if (pMap["do_not_text"] !== undefined) row[pMap["do_not_text"]] = false;
+    if (pMap["do_not_text_source"] !== undefined) row[pMap["do_not_text_source"]] = "START";
+    if (pMap["do_not_text_at"] !== undefined) row[pMap["do_not_text_at"]] = "";
+    row[pMap["updated_at"]] = new Date().toISOString();
+    pSh.getRange(patientRowIdx + 1, 1, 1, pHeader.length).setValues([row]);
   } else if (patientRowIdx > 0 && !isStop && !isHelp) {
     const row = pData[patientRowIdx];
     if (pMap["updated_at"] !== undefined) row[pMap["updated_at"]] = new Date().toISOString();
@@ -260,7 +269,7 @@ function handleTwilioInbound_(ss, practiceId, payload) {
       const row = tData[i];
       if ((row[h["phone_e164"]] || "") !== phone) continue;
       if (isStop && h["stop_at"] !== undefined && !row[h["stop_at"]]) row[h["stop_at"]] = new Date().toISOString();
-      if (!isStop && !isHelp && h["reply_at"] !== undefined && !row[h["reply_at"]]) row[h["reply_at"]] = new Date().toISOString();
+      if ((isStart || (!isStop && !isHelp)) && h["reply_at"] !== undefined && !row[h["reply_at"]]) row[h["reply_at"]] = new Date().toISOString();
       if (h["last_inbound_body"] !== undefined) row[h["last_inbound_body"]] = body.substring(0, 160);
       row[h["updated_at"]] = new Date().toISOString();
       tSh.getRange(i + 1, 1, 1, tData[0].length).setValues([row]);
@@ -268,7 +277,7 @@ function handleTwilioInbound_(ss, practiceId, payload) {
     }
   }
 
-  logEvent(ss, EVENT_TYPES.TWILIO_INBOUND, runId(), practiceId, isStop ? "STOP" : (isHelp ? "HELP" : "REPLY"), payload, { dedupe_key: dedupeKey, twilio_message_sid: msgSid });
+  logEvent(ss, EVENT_TYPES.TWILIO_INBOUND, runId(), practiceId, isStop ? "STOP" : (isHelp ? "HELP" : (isStart ? "START" : "REPLY")), payload, { dedupe_key: dedupeKey, twilio_message_sid: msgSid });
 }
 
 // ===== helpers =====

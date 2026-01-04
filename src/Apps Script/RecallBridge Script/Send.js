@@ -44,6 +44,7 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
     const SENDING = "SENDING";
     const SENT = "SENT";
     const ERROR = "ERROR";
+    const SKIPPED = "SKIPPED";
 
     // Phase 1: claim rows
     const claimed = [];
@@ -53,9 +54,17 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
       if ((row[h["campaign_id"]] || "") !== campaign) continue;
       const state = h["send_state"] !== undefined ? (row[h["send_state"]] || "") : (h["send_status"] !== undefined ? (row[h["send_status"]] || "") : "");
       const sid = h["msg_sid"] !== undefined ? row[h["msg_sid"]] : "";
-      // Safety: never claim rows that already recorded STOP/opt-out
-      if (h["stop_at"] !== undefined && row[h["stop_at"]]) continue;
-      if (h["do_not_text"] !== undefined && String(row[h["do_not_text"]]).toUpperCase() === "TRUE") continue;
+      const stopAt = h["stop_at"] !== undefined ? row[h["stop_at"]] : "";
+      const doNotText = h["do_not_text"] !== undefined ? String(row[h["do_not_text"]]).toUpperCase() === "TRUE" : false;
+      // Safety: never claim rows that already recorded STOP/opt-out; mark as skipped for audit clarity
+      if (stopAt || doNotText) {
+        if (h["send_state"] !== undefined) row[h["send_state"]] = SKIPPED;
+        if (h["send_status"] !== undefined) row[h["send_status"]] = SKIPPED;
+        if (h["ineligible_reason"] !== undefined) row[h["ineligible_reason"]] = stopAt ? "STOP_RECEIVED" : "DO_NOT_TEXT";
+        if (h["updated_at"] !== undefined) row[h["updated_at"]] = now;
+        data[i] = row;
+        continue;
+      }
 
       // Stuck SENDING guard: if SENDING with no SID and older than 30 min, mark ERROR and skip
       if (state === SENDING && !sid) {

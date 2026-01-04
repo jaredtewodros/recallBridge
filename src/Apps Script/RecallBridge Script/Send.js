@@ -107,8 +107,65 @@ function SendReadyTouches(practiceSheetId, touchType, dryRun) {
     const updatedRows = [];
     const updatedIdx = [];
     const now2 = new Date().toISOString();
+    // Map patient_key -> row index for fresh DND lookups
+    let patientSheet = null;
+    let patientHeader = [];
+    let patientHeaderMap = {};
+    const patientRowByKey = {};
+    if (h["patient_key"] !== undefined) {
+      try {
+        patientSheet = getSheetByName(ss, "30_Patients");
+        patientHeader = patientSheet.getRange(1, 1, 1, patientSheet.getLastColumn()).getValues()[0] || [];
+        patientHeaderMap = headerMap(patientHeader);
+        if (patientHeaderMap["patient_key"] !== undefined) {
+          const keyCol = patientHeaderMap["patient_key"] + 1;
+          const rowCount = Math.max(patientSheet.getLastRow() - 1, 0);
+          if (rowCount > 0) {
+            const keys = patientSheet.getRange(2, keyCol, rowCount, 1).getValues();
+            for (let i = 0; i < keys.length; i++) {
+              const key = keys[i][0];
+              if (key) patientRowByKey[String(key)] = i + 2; // data rows start at 2
+            }
+          }
+        }
+      } catch (_e) {
+        patientSheet = null;
+      }
+    }
     claimed.forEach(function (c) {
-      const row = data[c.idx];
+      // Re-read the live row to catch STOP/do_not_text flags that landed after claim
+      let row = data[c.idx];
+      if (h["stop_at"] !== undefined || h["do_not_text"] !== undefined) {
+        const liveRow = tSh.getRange(c.idx + 1, 1, 1, header.length).getValues()[0];
+        const liveStopAt = h["stop_at"] !== undefined ? liveRow[h["stop_at"]] : "";
+        const liveDoNotText = h["do_not_text"] !== undefined ? String(liveRow[h["do_not_text"]]).toUpperCase() === "TRUE" : false;
+        if (liveStopAt || liveDoNotText) {
+          row = liveRow;
+          if (h["send_state"] !== undefined) row[h["send_state"]] = SKIPPED;
+          if (h["send_status"] !== undefined) row[h["send_status"]] = SKIPPED;
+          if (h["ineligible_reason"] !== undefined) row[h["ineligible_reason"]] = liveStopAt ? "STOP_RECEIVED" : "DO_NOT_TEXT";
+          if (h["updated_at"] !== undefined) row[h["updated_at"]] = now2;
+          updatedRows.push(row);
+          updatedIdx.push(c.idx);
+          return;
+        }
+        row = liveRow; // Use freshest data if sending proceeds
+      }
+      // Patient-level DND check in case STOP is recorded only on 30_Patients
+      if (patientSheet && h["patient_key"] !== undefined && patientRowByKey[String(row[h["patient_key"]])]) {
+        const prowIdx = patientRowByKey[String(row[h["patient_key"]])];
+        const livePatientRow = patientSheet.getRange(prowIdx, 1, 1, patientHeader.length).getValues()[0];
+        const patientDoNotText = patientHeaderMap["do_not_text"] !== undefined ? String(livePatientRow[patientHeaderMap["do_not_text"]]).toUpperCase() === "TRUE" : false;
+        if (patientDoNotText) {
+          if (h["send_state"] !== undefined) row[h["send_state"]] = SKIPPED;
+          if (h["send_status"] !== undefined) row[h["send_status"]] = SKIPPED;
+          if (h["ineligible_reason"] !== undefined) row[h["ineligible_reason"]] = "DO_NOT_TEXT";
+          if (h["updated_at"] !== undefined) row[h["updated_at"]] = now2;
+          updatedRows.push(row);
+          updatedIdx.push(c.idx);
+          return;
+        }
+      }
       if (dryFlag) {
         // Dry-run: no Twilio call
         if (h["send_state"] !== undefined) row[h["send_state"]] = SENT;

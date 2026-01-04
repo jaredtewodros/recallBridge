@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RecallBridge Google Sheets Schema",
+  "type": "object",
+  "properties": {
+    "Queue": {
+      "type": "object",
+      "description": "Lead/patient action queue (manual-mode driving tab).",
+      "x-google-sheet-name": "Queue",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "type": {"type": "string"},
+              "validation": {
+                "type": "object",
+                "properties": {
+                  "enum": {"type": "array", "items": {"type": "string"}}
+                },
+                "additionalProperties": true
+              },
+              "notes": {"type": "string"}
+            },
+            "required": ["name", "type"]
+          },
+          "default": [
+            {"name": "e164_phone",      "type": "string", "notes": "Digits only; scripts render as +1########## when needed."},
+            {"name": "F_name",          "type": "string"},
+            {"name": "L_name",          "type": "string"},
+            {"name": "list_tag",        "type": "string"},
+            {"name": "responded_at",    "type": "datetime"},
+            {"name": "agent_attempts",  "type": "number"},
+            {"name": "last_action_at",  "type": "datetime"},
+            {"name": "next_action_at",  "type": "datetime"},
+            {
+              "name": "status",
+              "type": "string",
+              "validation": {
+                "enum": ["new", "calling", "lvm", "texted", "booked", "closed", "dnd", "wrong_number"]
+              },
+              "notes": "Data validation dropdown—MUST match exactly. Scripts only set allowed values."
+            },
+            {"name": "notes",           "type": "string"},
+            {"name": "LastVisit",       "type": "string", "notes": "Mirrors Master.LastVisit; display-only for quick recency checks."}
+          ]
+        }
+      },
+      "required": ["columns"]
+    },
+
+    "PilotDashboard": {
+      "type": "object",
+      "description": "Minimalist pilot KPIs (daily rows plus summary).",
+      "x-google-sheet-name": "Pilot Dashboard",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [
+            "date",
+            "sends_total",
+            "sends_t1",
+            "sends_t2",
+            "clicks",
+            "ctr_pct",
+            "stops",
+            "stop_pct",
+            "bookings",
+            "bookings_pct"
+          ]
+        },
+        "column_types": {
+          "type": "object",
+          "properties": {
+            "date":         {"type": "string", "format": "date"},
+            "sends_total":  {"type": "integer"},
+            "sends_t1":     {"type": "integer"},
+            "sends_t2":     {"type": "integer"},
+            "clicks":       {"type": "integer"},
+            "ctr_pct":      {"type": "number"},
+            "stops":        {"type": "integer"},
+            "stop_pct":     {"type": "number"},
+            "bookings":     {"type": "integer"},
+            "bookings_pct": {"type": "number"}
+          }
+        },
+        "notes": {
+          "type": "string",
+          "default": "One row per date. Rates are percentages (e.g., 0.12 for 12%). Summary row can live at bottom with totals/averages if desired."
+        }
+      },
+      "required": ["columns"]
+    },
+
+    "Master": {
+      "type": "object",
+      "description": "Master record table (patient + campaign state). Ordering varies by practice spreadsheet; scripts MUST find by header.",
+      "x-google-sheet-name": "Master",
+      "properties": {
+        "required_headers": {
+          "type": "array",
+          "description": "Headers that Apps Script reads/writes today. These MUST exist in the sheet (order is not guaranteed).",
+          "items": {"type": "string"},
+          "default": [
+            "e164_phone",
+            "sent_at",
+            "t1_sent_at",
+            "t2_sent_at",
+            "clicked_at",
+            "booked_at",
+            "responded_at",
+            "followup_stage",
+            "do_not_text"
+          ]
+        },
+        "column_types": {
+          "type": "object",
+          "description": "Type hints for required headers.",
+          "properties": {
+            "e164_phone":    {"type": "string"},
+            "sent_at":       {"type": "string", "format": "date-time"},
+            "t1_sent_at":    {"type": "string", "format": "date-time"},
+            "t2_sent_at":    {"type": "string", "format": "date-time"},
+            "clicked_at":    {"type": "string", "format": "date-time"},
+            "booked_at":    {"type": "string", "format": "date-time"},
+            "responded_at": {"type": "string", "format": "date-time"},
+            "followup_stage":{"type": "integer", "minimum": 0},
+            "do_not_text":   {"type": "boolean"}
+          },
+          "additionalProperties": true
+        },
+        "notes": {
+          "type": "string",
+          "default": "Other columns (name, formatted phone, last/next visit, procedures, statuses) are present and MUST be treated as pass-through. Never assume position; always resolve by exact header name."
+        }
+      },
+      "required": ["required_headers", "column_types"]
+    },
+
+    "Ping": {
+      "type": "object",
+      "description": "Debug/telemetry sink for webhook sanity checks.",
+      "x-google-sheet-name": "Ping",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": ["ts", "raw", "headers", "tag"]
+        },
+        "column_types": {
+          "type": "object",
+          "properties": {
+            "ts":      {"type": "string", "format": "date-time"},
+            "raw":     {"type": "string"},
+            "headers": {"type": "string"},
+            "tag":     {"type": "string"}
+          }
+        }
+      },
+      "required": ["columns"]
+    }
+  },
+  "required": ["Queue", "Master", "Ping"]
+}

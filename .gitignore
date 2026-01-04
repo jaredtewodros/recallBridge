@@ -1,0 +1,6 @@
+.env
+# Local Python cache
+__pycache__/
+.env.local
+.DS_Store
+Send Lists/

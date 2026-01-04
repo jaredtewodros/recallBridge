@@ -13,6 +13,10 @@ RecallBridge orchestrates recall outreach with **Twilio Functions** and a **Goog
   - Supporting logic: `Schema.js`, `Utils.js`, `queue.js`, `Touches.js`, `Send.js`, `Templates.js`, etc.
 - **Legacy Apps Script webhook**: `webhook.js` (single-sheet Master/Queue path with kill switch)
 - **Sheets SoR**: tabs defined in `Schema.js` (`30_Patients`, `50_Queue`, `60_Touches`, `70_EventLog`, `10_Config`, etc.)
+- **Deprecated (first pilot)** in `deprecated/`
+  - `apps-script/` holds the legacy single-sheet webhook/queue/ping monitor.
+  - `scripts/` and `python/` hold the first-pilot send/test utilities and template renderer.
+  - Kept only for reference; do not deploy or run without revalidating behavior/secrets.
 
 ---
 

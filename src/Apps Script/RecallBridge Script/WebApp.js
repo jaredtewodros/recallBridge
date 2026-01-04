@@ -51,6 +51,7 @@ function doPost(e) {
         }
       } catch (err) {
         try { logEvent(ss, EVENT_TYPES.ERROR, runId(), practiceId, "webhook error: " + err.message, payload, { error: String(err) }); } catch (_) {}
+        throw err;
       }
     } finally {
       lock.releaseLock();
@@ -230,46 +231,42 @@ function handleTwilioInbound_(ss, practiceId, payload) {
   let patientRowIdx = -1;
   let pMap = {};
   let pHeader = [];
-  try {
-    const pSh = getSheetByName(ss, "30_Patients");
-    const pData = pSh.getDataRange().getValues();
-    pHeader = pData[0];
-    pMap = headerMap(pHeader);
-    for (let i = 1; i < pData.length; i++) {
-      if ((pData[i][pMap["phone_e164"]] || "") === phone) { patientRowIdx = i; break; }
-    }
-    if (patientRowIdx > 0 && isStop) {
-      const row = pData[patientRowIdx];
-      row[pMap["do_not_text"]] = true;
-      if (pMap["do_not_text_source"] !== undefined) row[pMap["do_not_text_source"]] = "STOP";
-      if (pMap["do_not_text_at"] !== undefined) row[pMap["do_not_text_at"]] = new Date().toISOString();
-      row[pMap["updated_at"]] = new Date().toISOString();
-      pSh.getRange(patientRowIdx + 1, 1, 1, pHeader.length).setValues([row]);
-    } else if (patientRowIdx > 0 && !isStop && !isHelp) {
-      const row = pData[patientRowIdx];
-      if (pMap["updated_at"] !== undefined) row[pMap["updated_at"]] = new Date().toISOString();
-      pSh.getRange(patientRowIdx + 1, 1, 1, pHeader.length).setValues([row]);
-    }
-  } catch (_e) {}
+  const pSh = getSheetByName(ss, "30_Patients");
+  const pData = pSh.getDataRange().getValues();
+  pHeader = pData[0];
+  pMap = headerMap(pHeader);
+  for (let i = 1; i < pData.length; i++) {
+    if ((pData[i][pMap["phone_e164"]] || "") === phone) { patientRowIdx = i; break; }
+  }
+  if (patientRowIdx > 0 && isStop) {
+    const row = pData[patientRowIdx];
+    row[pMap["do_not_text"]] = true;
+    if (pMap["do_not_text_source"] !== undefined) row[pMap["do_not_text_source"]] = "STOP";
+    if (pMap["do_not_text_at"] !== undefined) row[pMap["do_not_text_at"]] = new Date().toISOString();
+    row[pMap["updated_at"]] = new Date().toISOString();
+    pSh.getRange(patientRowIdx + 1, 1, 1, pHeader.length).setValues([row]);
+  } else if (patientRowIdx > 0 && !isStop && !isHelp) {
+    const row = pData[patientRowIdx];
+    if (pMap["updated_at"] !== undefined) row[pMap["updated_at"]] = new Date().toISOString();
+    pSh.getRange(patientRowIdx + 1, 1, 1, pHeader.length).setValues([row]);
+  }
 
   // Update touches for reply/stop
-  try {
-    const tSh = getSheetByName(ss, "60_Touches");
-    const tData = tSh.getDataRange().getValues();
-    if (tData.length >= 2) {
-      const h = headerMap(tData[0]);
-      for (let i = tData.length - 1; i >= 1; i--) {
-        const row = tData[i];
-        if ((row[h["phone_e164"]] || "") !== phone) continue;
-        if (isStop && h["stop_at"] !== undefined && !row[h["stop_at"]]) row[h["stop_at"]] = new Date().toISOString();
-        if (!isStop && !isHelp && h["reply_at"] !== undefined && !row[h["reply_at"]]) row[h["reply_at"]] = new Date().toISOString();
-        if (h["last_inbound_body"] !== undefined) row[h["last_inbound_body"]] = body.substring(0, 160);
-        row[h["updated_at"]] = new Date().toISOString();
-        tSh.getRange(i + 1, 1, 1, tData[0].length).setValues([row]);
-        break; // update most recent match
-      }
+  const tSh = getSheetByName(ss, "60_Touches");
+  const tData = tSh.getDataRange().getValues();
+  if (tData.length >= 2) {
+    const h = headerMap(tData[0]);
+    for (let i = tData.length - 1; i >= 1; i--) {
+      const row = tData[i];
+      if ((row[h["phone_e164"]] || "") !== phone) continue;
+      if (isStop && h["stop_at"] !== undefined && !row[h["stop_at"]]) row[h["stop_at"]] = new Date().toISOString();
+      if (!isStop && !isHelp && h["reply_at"] !== undefined && !row[h["reply_at"]]) row[h["reply_at"]] = new Date().toISOString();
+      if (h["last_inbound_body"] !== undefined) row[h["last_inbound_body"]] = body.substring(0, 160);
+      row[h["updated_at"]] = new Date().toISOString();
+      tSh.getRange(i + 1, 1, 1, tData[0].length).setValues([row]);
+      break; // update most recent match
     }
-  } catch (_e) {}
+  }
 
   logEvent(ss, EVENT_TYPES.TWILIO_INBOUND, runId(), practiceId, isStop ? "STOP" : (isHelp ? "HELP" : "REPLY"), payload, { dedupe_key: dedupeKey, twilio_message_sid: msgSid });
 }

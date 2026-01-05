@@ -89,6 +89,18 @@ curl -i -L \
   3) Run `SyncWebhookUrlsForPractice('bethesda_dental_smiles')` (or `SyncWebhookUrlsAll`) to push refreshed callback URLs into 10_Config using the discovered exec.
   4) Re-test callbacks once URLs and deployment are aligned.
 
+## Status update (2026-01-04) — Twilio proxy hardening and tests
+- Twilio Functions (`src/Twilio/twilio-status.js`, `twilio-click.js`, `twilio-inbound.js`) now:
+  - Return 500 to Twilio only when GAS returns 5xx **or** the body looks like the Apps Script HTML error page (e.g., `<title>Error</title>`), so Twilio retries real server failures.
+  - Return 200 for 4xx/auth/config errors to avoid 11200 storms; misconfig (`RB_PROXY_TOKEN`/`GAS_EXEC_URL` missing) returns `misconfigured_no_retry`.
+  - Are deployed with **Protected** visibility (Twilio edge signature validation).
+- Tests performed:
+  - Part A (retry path): forced a GAS error, proxy returned 500, Twilio marked the callbacks retriable; after removing the error, callbacks completed with 200/ok and `delivered_at` populated.
+  - Part B (non-retry path): injected a bad token in per-message `status_callback_url`; proxy saw the bad token, GAS returned `forbidden`, proxy returned 200, Twilio did not retry (as designed), and no `delivered_at` was written.
+- Next steps:
+  1) Restore correct tokens in Messaging Service / 10_Config (or rerun `SyncWebhookUrlsAll`) so production callbacks use the valid token.
+  2) Keep monitoring Twilio Function logs + GAS `70_EventLog` during sends; 5xx will trigger retries, 4xx will not.
+
 DATA MODEL UPDATES (Sheets):
 1) 60_Touches (or Touches tab):
    - Ensure these columns exist (append if missing; do not rename existing):

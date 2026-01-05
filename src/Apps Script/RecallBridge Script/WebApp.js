@@ -1,9 +1,10 @@
 // WebApp.js - single webhook entrypoint (Twilio status, clicks, inbound)
+const RB_BUILD_ID = "2026-01-04T00:00:00Z";
 
 function doGet(e) {
   // minimal doGet healthcheck to keep endpoint browser-testable 
   return ContentService
-    .createTextOutput("ok")
+    .createTextOutput("ok " + RB_BUILD_ID)
     .setMimeType(ContentService.MimeType.TEXT);
 }
 
@@ -17,6 +18,33 @@ function doPost(e) {
   if (!route) return ContentService.createTextOutput("missing route").setMimeType(ContentService.MimeType.TEXT);
   if (route === "health") {
     if (!expectedToken || token !== expectedToken) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
+    return ContentService.createTextOutput("ok").setMimeType(ContentService.MimeType.TEXT);
+  }
+
+  // Proxy failure logging path: requires proxy header, bypasses RB_WEBHOOK_TOKEN/Twilio sig.
+  if (route === "proxy_failure") {
+    if (!practiceId) return ContentService.createTextOutput("missing practice_id").setMimeType(ContentService.MimeType.TEXT);
+    var proxyOnly = validateProxyToken_(e);
+    if (!proxyOnly.valid) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
+    const registryJsonpf = PropertiesService.getScriptProperties().getProperty("RB_PRACTICE_REGISTRY_JSON") || "{}";
+    const registrypf = safeJsonParse_(registryJsonpf, {});
+    const sheetIdpf = registrypf[practiceId];
+    if (!sheetIdpf) return ContentService.createTextOutput("unknown practice").setMimeType(ContentService.MimeType.TEXT);
+    const lockpf = LockService.getScriptLock();
+    if (lockpf.tryLock(5000)) {
+      try {
+        const sspf = SpreadsheetApp.openById(sheetIdpf);
+        const payloadpf = parseWebhookBody_(e) || {};
+        if (payloadpf.proxy_body && typeof payloadpf.proxy_body === "string" && payloadpf.proxy_body.length > 1024) {
+          payloadpf.proxy_body = payloadpf.proxy_body.substring(0, 1024);
+        }
+        logEvent(sspf, "proxy_failure", runId(), practiceId, "proxy forward failed", payloadpf, { dedupe_key: "", note: "proxy_forward_failed" });
+      } catch (_errpf) {
+        // best effort
+      } finally {
+        lockpf.releaseLock();
+      }
+    }
     return ContentService.createTextOutput("ok").setMimeType(ContentService.MimeType.TEXT);
   }
 
@@ -39,20 +67,19 @@ function doPost(e) {
   // Wait up to 10s for other webhooks to finish writing
   if (lock.tryLock(10000)) {
     try {
-      try {
-        if (route === "twilio_status") {
-          handleTwilioStatus_(ss, practiceId, payload);
-        } else if (route === "twilio_click") {
-          handleTwilioClick_(ss, practiceId, payload);
-        } else if (route === "twilio_inbound") {
-          handleTwilioInbound_(ss, practiceId, payload);
-        } else {
-          return ContentService.createTextOutput("unknown route").setMimeType(ContentService.MimeType.TEXT);
-        }
-      } catch (err) {
-        try { logEvent(ss, EVENT_TYPES.ERROR, runId(), practiceId, "webhook error: " + err.message, payload, { error: String(err) }); } catch (_) {}
-        throw err;
+      if (route === "twilio_status") {
+        handleTwilioStatus_(ss, practiceId, payload);
+      } else if (route === "twilio_click") {
+        handleTwilioClick_(ss, practiceId, payload);
+      } else if (route === "twilio_inbound") {
+        handleTwilioInbound_(ss, practiceId, payload);
+      } else {
+        return ContentService.createTextOutput("unknown route").setMimeType(ContentService.MimeType.TEXT);
       }
+    } catch (err) {
+      try { logEvent(ss, EVENT_TYPES.ERROR, runId(), practiceId, "webhook error: " + err.message, payload, { error: String(err) }); } catch (_) {}
+      // swallow to avoid Twilio retry storms
+      return ContentService.createTextOutput("ok").setMimeType(ContentService.MimeType.TEXT);
     } finally {
       lock.releaseLock();
     }
@@ -71,13 +98,47 @@ function parseWebhookBody_(e) {
   if (ct.indexOf("application/json") !== -1) {
     const obj = safeJsonParse_(raw, {});
     if (obj && typeof obj === "object") return obj;
+    return {};
   }
-  // form-encoded fallback
-  return e.parameter || {};
+  // form-encoded (or unknown) fallback: parse raw body, do NOT use e.parameter
+  var form = parseFormEncodedBody_(raw);
+  stripKeys_(form, ["route","practice_id","token","X-Twilio-Signature","x-twilio-signature"]);
+  return form;
 }
 
 function safeJsonParse_(txt, fallback) {
   try { return JSON.parse(txt); } catch (_e) { return fallback; }
+}
+
+function stripKeys_(obj, keys) {
+  if (!obj) return;
+  (keys || []).forEach(function (k) {
+    if (obj.hasOwnProperty(k)) delete obj[k];
+    var low = String(k || "").toLowerCase();
+    Object.keys(obj).forEach(function (kk) {
+      if (String(kk || "").toLowerCase() === low) delete obj[kk];
+    });
+  });
+}
+
+// Parse x-www-form-urlencoded safely (Apps Script merges params otherwise).
+function parseFormEncodedBody_(raw) {
+  var obj = {};
+  if (!raw) return obj;
+  var pairs = String(raw).split("&");
+  pairs.forEach(function (pair) {
+    if (pair === "") return;
+    var idx = pair.indexOf("=");
+    var k = idx === -1 ? pair : pair.substring(0, idx);
+    var v = idx === -1 ? "" : pair.substring(idx + 1);
+    // Replace + with space before decode
+    k = k.replace(/\+/g, " ");
+    v = v.replace(/\+/g, " ");
+    try { k = decodeURIComponent(k); } catch (_e) {}
+    try { v = decodeURIComponent(v); } catch (_e) {}
+    obj[k] = v;
+  });
+  return obj;
 }
 
 // Validate proxy token header set by Twilio Function proxy; skips Twilio signature when present and correct.
@@ -90,7 +151,7 @@ function validateProxyToken_(e) {
   return { valid: token === expected, present: true };
 }
 
-// Best-effort Twilio signature validation. If signature header or auth token missing, validation is skipped.
+// Twilio signature validation using raw body + canonical query (route, practice_id, token).
 function validateTwilioSignature_(e, practiceId) {
   var authToken = "";
   try {
@@ -102,7 +163,8 @@ function validateTwilioSignature_(e, practiceId) {
   if (!authToken) return true;
   const headers = (e && e.headers) || {};
   const sigHeader = headers["X-Twilio-Signature"] || headers["x-twilio-signature"] || (e && e.parameter && (e.parameter["X-Twilio-Signature"] || e.parameter["x-twilio-signature"])) || "";
-  if (!sigHeader) return true; // cannot validate without signature
+  // Security: if authToken is configured, signature header must be present.
+  if (!sigHeader) return false;
 
   // Candidate base URLs: configured override, service URL, and exec-normalized version
   var cachedExec = "";
@@ -114,27 +176,44 @@ function validateTwilioSignature_(e, practiceId) {
     if (u && candidates.indexOf(u) === -1) candidates.push(u);
   });
 
-  // Build signature data for form vs JSON
-  var isJson = e && e.postData && (e.postData.type || "").toLowerCase().indexOf("application/json") !== -1;
-  var body = e && e.postData ? (e.postData.contents || "") : "";
-  var params = e && e.parameter ? e.parameter : {};
-  var keys = Object.keys(params || {}).filter(function (k) { return k.toLowerCase() !== "x-twilio-signature"; }).sort();
-  var concatParams = keys.map(function (k) { return k + String(params[k]); }).join("");
-  // Reconstruct query string for known URL params (route, practice_id, token)
+  // Build signature data: canonical query from known params, body params from raw form (not merged)
+  var params = qsParams_(e); // build limited query params
   var queryKeys = ["route", "practice_id", "token"].filter(function (k) { return params.hasOwnProperty(k); });
-  var queryString = queryKeys.map(function (k) {
-    return k + "=" + encodeURIComponent(params[k]);
-  }).join("&");
+  var queryString = queryKeys.map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&");
+
+  var rawBody = (e && e.postData && e.postData.contents) ? e.postData.contents : "";
+  var ct = (e && e.postData && e.postData.type) ? e.postData.type.toLowerCase() : "";
+  var bodyParams = {};
+  if (ct.indexOf("application/x-www-form-urlencoded") !== -1) {
+    bodyParams = parseFormEncodedBody_(rawBody);
+  }
+  var bodyKeys = Object.keys(bodyParams).filter(function (k) {
+    var low = k.toLowerCase();
+    if (low === "x-twilio-signature") return false;
+    if (low === "route" || low === "practice_id" || low === "token") return false;
+    return true;
+  }).sort();
+  var concatParams = bodyKeys.map(function (k) { return k + String(bodyParams[k]); }).join("");
 
   for (var i = 0; i < candidates.length; i++) {
     var baseUrl = candidates[i];
     var fullUrl = queryString ? (baseUrl + "?" + queryString) : baseUrl;
-    var data = isJson ? (fullUrl + body) : (fullUrl + concatParams);
+    var data = fullUrl + concatParams;
     var digest = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, data, authToken);
     var computed = Utilities.base64Encode(digest);
     if (computed === sigHeader) return true;
   }
   return false;
+}
+
+// Helper to pull limited query params without merged body params
+function qsParams_(e) {
+  var params = {};
+  if (!e || !e.parameter) return params;
+  ["route", "practice_id", "token"].forEach(function (k) {
+    if (e.parameter.hasOwnProperty(k)) params[k] = e.parameter[k];
+  });
+  return params;
 }
 
 // ===== Twilio Handlers =====

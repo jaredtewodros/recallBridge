@@ -1,4 +1,9 @@
 // WebApp.js - single webhook entrypoint (Twilio status, clicks, inbound)
+// Proxy Mode: Twilio Functions perform edge signature validation; GAS trusts
+// requests carrying X-RB-Proxy-Token (and RB_WEBHOOK_TOKEN gate). Twilio
+// signature validation in GAS is brittle (URL reconstruction, merged params),
+// so it is disabled here to avoid false negatives. proxy_failure logging is
+// best-effort with truncated payloads to avoid runaway logging.
 const RB_BUILD_ID = "2026-01-04T00:00:00Z";
 
 function doGet(e) {
@@ -35,6 +40,18 @@ function doPost(e) {
       try {
         const sspf = SpreadsheetApp.openById(sheetIdpf);
         const payloadpf = parseWebhookBody_(e) || {};
+        // Strip heavy PHI fields and truncate proxy_body defensively.
+        try {
+          delete payloadpf.Body; delete payloadpf.body;
+          delete payloadpf.From; delete payloadpf.from; delete payloadpf.To; delete payloadpf.to;
+          Object.keys(payloadpf || {}).forEach(function (k) {
+            var lower = String(k || "").toLowerCase();
+            if (lower.indexOf("mediaurl") === 0 || lower.indexOf("mediacontenttype") === 0 || lower === "nummedia") delete payloadpf[k];
+          });
+          // Keep redacted identifiers when present.
+          if (payloadpf.from_redacted === undefined && payloadpf.fromRedacted !== undefined) payloadpf.from_redacted = payloadpf.fromRedacted;
+          if (payloadpf.to_redacted === undefined && payloadpf.toRedacted !== undefined) payloadpf.to_redacted = payloadpf.toRedacted;
+        } catch (_d) {}
         if (payloadpf.proxy_body && typeof payloadpf.proxy_body === "string" && payloadpf.proxy_body.length > 1024) {
           payloadpf.proxy_body = payloadpf.proxy_body.substring(0, 1024);
         }
@@ -52,8 +69,8 @@ function doPost(e) {
   if (!expectedToken || token !== expectedToken) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
 
   const proxyCheck = validateProxyToken_(e);
-  if (!proxyCheck.valid && proxyCheck.present) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
-  if (!proxyCheck.valid && !validateTwilioSignature_(e, practiceId)) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
+  // Proxy Mode: edge validates signature; GAS requires proxy token.
+  if (!proxyCheck.valid) return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
 
   const registryJson = PropertiesService.getScriptProperties().getProperty("RB_PRACTICE_REGISTRY_JSON") || "{}";
   const registry = safeJsonParse_(registryJson, {});
@@ -97,12 +114,15 @@ function parseWebhookBody_(e) {
   const raw = e.postData.contents || "";
   if (ct.indexOf("application/json") !== -1) {
     const obj = safeJsonParse_(raw, {});
-    if (obj && typeof obj === "object") return obj;
+    if (obj && typeof obj === "object") {
+      stripKeys_(obj, ["route","practice_id","practiceId","token","X-Twilio-Signature","x-twilio-signature"]);
+      return obj;
+    }
     return {};
   }
   // form-encoded (or unknown) fallback: parse raw body, do NOT use e.parameter
   var form = parseFormEncodedBody_(raw);
-  stripKeys_(form, ["route","practice_id","token","X-Twilio-Signature","x-twilio-signature"]);
+  stripKeys_(form, ["route","practice_id","practiceId","token","X-Twilio-Signature","x-twilio-signature"]);
   return form;
 }
 
@@ -130,7 +150,7 @@ function parseFormEncodedBody_(raw) {
     if (pair === "") return;
     var idx = pair.indexOf("=");
     var k = idx === -1 ? pair : pair.substring(0, idx);
-    var v = idx === -1 ? "" : pair.substring(idx + 1);
+    var v = idx === -1 ? "" : pair.substring(idx + 1); // split on first '=' only to preserve '=' in values
     // Replace + with space before decode
     k = k.replace(/\+/g, " ");
     v = v.replace(/\+/g, " ");
@@ -141,7 +161,7 @@ function parseFormEncodedBody_(raw) {
   return obj;
 }
 
-// Validate proxy token header set by Twilio Function proxy; skips Twilio signature when present and correct.
+// Proxy Mode: edge validates Twilio signature; GAS enforces proxy token only.
 function validateProxyToken_(e) {
   var expected = PropertiesService.getScriptProperties().getProperty("RB_PROXY_TOKEN") || "";
   if (!expected) return { valid: false, present: false };
@@ -151,69 +171,9 @@ function validateProxyToken_(e) {
   return { valid: token === expected, present: true };
 }
 
-// Twilio signature validation using raw body + canonical query (route, practice_id, token).
-function validateTwilioSignature_(e, practiceId) {
-  var authToken = "";
-  try {
-    var raw = PropertiesService.getScriptProperties().getProperty("RB_TWILIO_CREDS_JSON") || "{}";
-    var map = JSON.parse(raw);
-    var entry = map[practiceId];
-    if (entry && entry.authToken) authToken = entry.authToken;
-  } catch (_err) { authToken = ""; }
-  if (!authToken) return true;
-  const headers = (e && e.headers) || {};
-  const sigHeader = headers["X-Twilio-Signature"] || headers["x-twilio-signature"] || (e && e.parameter && (e.parameter["X-Twilio-Signature"] || e.parameter["x-twilio-signature"])) || "";
-  // Security: if authToken is configured, signature header must be present.
-  if (!sigHeader) return false;
-
-  // Candidate base URLs: configured override, service URL, and exec-normalized version
-  var cachedExec = "";
-  try { cachedExec = getCachedWebAppExecUrl_(); } catch (_e) { cachedExec = ""; }
-  var serviceUrl = ScriptApp.getService().getUrl();
-  var execUrl = serviceUrl ? serviceUrl.replace(/\/dev$/, "/exec") : "";
-  var candidates = [];
-  [cachedExec, serviceUrl, execUrl].forEach(function (u) {
-    if (u && candidates.indexOf(u) === -1) candidates.push(u);
-  });
-
-  // Build signature data: canonical query from known params, body params from raw form (not merged)
-  var params = qsParams_(e); // build limited query params
-  var queryKeys = ["route", "practice_id", "token"].filter(function (k) { return params.hasOwnProperty(k); });
-  var queryString = queryKeys.map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&");
-
-  var rawBody = (e && e.postData && e.postData.contents) ? e.postData.contents : "";
-  var ct = (e && e.postData && e.postData.type) ? e.postData.type.toLowerCase() : "";
-  var bodyParams = {};
-  if (ct.indexOf("application/x-www-form-urlencoded") !== -1) {
-    bodyParams = parseFormEncodedBody_(rawBody);
-  }
-  var bodyKeys = Object.keys(bodyParams).filter(function (k) {
-    var low = k.toLowerCase();
-    if (low === "x-twilio-signature") return false;
-    if (low === "route" || low === "practice_id" || low === "token") return false;
-    return true;
-  }).sort();
-  var concatParams = bodyKeys.map(function (k) { return k + String(bodyParams[k]); }).join("");
-
-  for (var i = 0; i < candidates.length; i++) {
-    var baseUrl = candidates[i];
-    var fullUrl = queryString ? (baseUrl + "?" + queryString) : baseUrl;
-    var data = fullUrl + concatParams;
-    var digest = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, data, authToken);
-    var computed = Utilities.base64Encode(digest);
-    if (computed === sigHeader) return true;
-  }
-  return false;
-}
-
-// Helper to pull limited query params without merged body params
-function qsParams_(e) {
-  var params = {};
-  if (!e || !e.parameter) return params;
-  ["route", "practice_id", "token"].forEach(function (k) {
-    if (e.parameter.hasOwnProperty(k)) params[k] = e.parameter[k];
-  });
-  return params;
+// Proxy Mode: edge validates Twilio signature; GAS enforces proxy token only.
+function validateTwilioSignature_(_e, _practiceId) {
+  return true;
 }
 
 // ===== Twilio Handlers =====
